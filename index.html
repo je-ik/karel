@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robot Karel - Web IDE</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-icon">🤖</div>
+      <div>
+        <span class="logo-title">Robot Karel</span>
+        <span class="logo-badge">JavaScript</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- Language Switcher -->
+      <select id="lang-select" title="Změnit jazyk / Change Language">
+        <option value="cs" selected>🇨🇿 Čeština</option>
+        <option value="en">🇬🇧 English</option>
+      </select>
+
+      <!-- Audio Mute Button -->
+      <button id="sound-btn" class="btn btn-icon" title="Zvuk / Sound">
+        🔊
+      </button>
+
+      <!-- Cheatsheet / Help Button -->
+      <button id="help-btn" class="btn" title="Nápověda k jazyku / Cheatsheet">
+        <span>📖</span> <span data-i18n="cheatsheet">Příkazy</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace: Split Panes -->
+  <main class="app-workspace">
+
+    <!-- Left Pane: Code Editor & Execution -->
+    <section class="editor-pane">
+      <!-- Editor Toolbar -->
+      <div class="pane-toolbar">
+        <div class="toolbar-group">
+          <label for="example-select" class="toolbar-label" data-i18n="exampleLabel">Příklad:</label>
+          <select id="example-select">
+            <option value="" disabled selected data-i18n="selectExample">Vyberte úlohu...</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <button id="new-code-btn" class="btn" title="Nový prázdný program / Clear editor">
+            📄 <span data-i18n="newBtn">Nový</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Code Editor Area -->
+      <div class="editor-container">
+        <div id="line-numbers" class="line-numbers">1</div>
+        <div class="editor-wrapper">
+          <div id="active-line-marker" class="active-line-marker"></div>
+          <textarea
+            id="code-editor"
+            class="code-editor"
+            spellcheck="false"
+            placeholder="// Zde napište program pro Karla..."
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- Execution Controls -->
+      <div class="exec-controls">
+        <div class="toolbar-group">
+          <button id="run-btn" class="btn btn-primary" title="Spustit program / Run (F5)">
+            ▶ <span data-i18n="runBtn">Spustit</span>
+          </button>
+          <button id="pause-btn" class="btn" disabled title="Pozastavit / Pause">
+            ⏸ <span data-i18n="pauseBtn">Pauza</span>
+          </button>
+          <button id="step-btn" class="btn btn-blue" title="Krokovat o 1 instrukci / Step (F10)">
+            ⏭ <span data-i18n="stepBtn">Krok</span>
+          </button>
+          <button id="stop-btn" class="btn btn-danger" title="Zastavit a resetovat / Stop & Reset">
+            ⏹ <span data-i18n="resetBtn">Reset</span>
+          </button>
+        </div>
+
+        <!-- Speed Slider -->
+        <div class="speed-control">
+          <span>🐢</span>
+          <input
+            id="speed-slider"
+            type="range"
+            class="speed-slider"
+            min="0"
+            max="600"
+            step="20"
+            value="200"
+            title="Rychlost provádění / Speed"
+          >
+          <span>🚀</span>
+        </div>
+      </div>
+
+      <!-- Direct Manual Control Buttons -->
+      <div class="manual-controls">
+        <span class="manual-title" data-i18n="manualTitle">Ruční řízení:</span>
+        <button id="m-step" class="btn manual-btn" title="Krok vpřed">KROK</button>
+        <button id="m-left" class="btn manual-btn" title="Otočit vlevo">VLEVO</button>
+        <button id="m-right" class="btn manual-btn" title="Otočit vpravo">VPRAVO</button>
+        <button id="m-around" class="btn manual-btn" title="Čelem vzad">VZAD</button>
+        <button id="m-put" class="btn manual-btn" title="Položit značku">POLOŽ</button>
+        <button id="m-pick" class="btn manual-btn" title="Zvednout značku">ZVEDNI</button>
+      </div>
+    </section>
+
+    <!-- Right Pane: World & HUD -->
+    <section class="world-pane">
+      <!-- World Toolbar & Editor Tools -->
+      <div class="pane-toolbar">
+        <div class="toolbar-group">
+          <!-- Editor Tool Mode -->
+          <button id="tool-beeper" class="btn btn-active" title="Klikem na políčko přidáte/odeberete značku">
+            💎 <span data-i18n="toolBeeper">Značka</span>
+          </button>
+          <button id="tool-wall" class="btn" title="Klikem mezi políčka postavíte/zbouráte zeď">
+            🧱 <span data-i18n="toolWall">Zeď</span>
+          </button>
+          <button id="tool-karel" class="btn" title="Klikem na políčko přemístíte Karla">
+            🤖 <span data-i18n="toolKarel">Karel</span>
+          </button>
+        </div>
+
+        <div class="toolbar-group">
+          <label for="world-w" class="toolbar-label" data-i18n="gridSize">Mřížka:</label>
+          <input id="world-w" type="number" min="3" max="30" value="10" style="width: 50px;">
+          <span>×</span>
+          <input id="world-h" type="number" min="3" max="30" value="10" style="width: 50px;">
+          <button id="resize-btn" class="btn" data-i18n="resizeBtn">OK</button>
+          <button id="maze-btn" class="btn" title="Vygenerovat náhodné bludiště" data-i18n="mazeBtn">🎲 Bludiště</button>
+          <button id="clear-world-btn" class="btn" title="Vyčistit svět" data-i18n="clearBtn">Vyčistit</button>
+        </div>
+      </div>
+
+      <!-- World Status HUD -->
+      <div class="world-hud">
+        <div class="hud-item">
+          <span>Pozice / Position:</span>
+          <span id="hud-pos" class="hud-value">[1, 1]</span>
+        </div>
+        <div class="hud-item">
+          <span>Směr / Dir:</span>
+          <span id="hud-dir" class="hud-value">VÝCHOD</span>
+        </div>
+        <div class="hud-item">
+          <span>Kapsa / Bag:</span>
+          <span id="hud-bag" class="hud-value">∞</span>
+        </div>
+        <div class="hud-item">
+          <span>Značky / Here:</span>
+          <span id="hud-cell-beepers" class="hud-value">0</span>
+        </div>
+        <div class="hud-item">
+          <span id="status-badge" class="status-badge status-idle">PŘIPRAVEN</span>
+        </div>
+      </div>
+
+      <!-- Canvas World Container -->
+      <div class="canvas-container">
+        <canvas id="karel-canvas"></canvas>
+      </div>
+
+      <!-- Console / Log Output Drawer -->
+      <div class="console-pane">
+        <div class="console-header">
+          <span data-i18n="consoleTitle">Konzole & Hlášení:</span>
+          <button id="clear-console-btn" class="btn" style="padding: 2px 6px; font-size: 0.75rem;">Smazat</button>
+        </div>
+        <div id="console-output" class="console-output">
+          <div class="log-entry log-info">Vítejte v prostředí Robot Karel! / Welcome to Karel Web IDE.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Cheatsheet / Reference Modal Dialog -->
+  <div id="cheatsheet-modal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" data-i18n="cheatsheetTitle">📖 Přehled příkazů Karla (Čeština & English)</h3>
+        <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Commands Card -->
+        <div class="cheatsheet-card">
+          <h4>Základní příkazy / Primitive Commands</h4>
+          <table class="cheatsheet-table">
+            <thead>
+              <tr><th>Čeština</th><th>English</th><th>Význam / Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>KROK</code></td><td><code>STEP</code> / <code>MOVE</code></td><td>Krok o 1 pole vpřed</td></tr>
+              <tr><td><code>VLEVO-BOK</code></td><td><code>TURN_LEFT</code></td><td>Otočení o 90° vlevo</td></tr>
+              <tr><td><code>VPRAVO-BOK</code></td><td><code>TURN_RIGHT</code></td><td>Otočení o 90° vpravo</td></tr>
+              <tr><td><code>CELEM-VZAD</code></td><td><code>TURN_AROUND</code></td><td>Otočení o 180°</td></tr>
+              <tr><td><code>POLOZ</code></td><td><code>PUT</code> / <code>PUT_BEEPER</code></td><td>Položit značku z kapsy</td></tr>
+              <tr><td><code>ZVEDNI</code></td><td><code>PICK</code> / <code>PICK_BEEPER</code></td><td>Zvednout značku do kapsy</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Control Flow Card -->
+        <div class="cheatsheet-card">
+          <h4>Řídicí struktury / Control Flow</h4>
+          <table class="cheatsheet-table">
+            <thead>
+              <tr><th>Čeština</th><th>English</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>OPAKUJ 5 KRAT<br>&nbsp;&nbsp;KROK<br>KONEC</code></td>
+                <td><code>REPEAT 5 TIMES<br>&nbsp;&nbsp;STEP<br>END</code></td>
+              </tr>
+              <tr>
+                <td><code>DOKUD NENI ZED<br>&nbsp;&nbsp;KROK<br>KONEC</code></td>
+                <td><code>WHILE FRONT_IS_CLEAR<br>&nbsp;&nbsp;STEP<br>END</code></td>
+              </tr>
+              <tr>
+                <td><code>KDYZ JE CIP<br>&nbsp;&nbsp;ZVEDNI<br>JINAK<br>&nbsp;&nbsp;POLOZ<br>KONEC</code></td>
+                <td><code>IF BEEPER<br>&nbsp;&nbsp;PICK<br>ELSE<br>&nbsp;&nbsp;PUT<br>END</code></td>
+              </tr>
+              <tr>
+                <td><code>PRIKAZ VLEVO<br>&nbsp;&nbsp;VLEVO-BOK<br>KONEC</code></td>
+                <td><code>DEFINE TURN_LEFT<br>&nbsp;&nbsp;TURN_LEFT<br>END</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Conditions Card -->
+        <div class="cheatsheet-card">
+          <h4>Podmínky a senzory / Conditions</h4>
+          <table class="cheatsheet-table">
+            <thead>
+              <tr><th>Čeština</th><th>English</th><th>Význam / Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>[JE/NENI] ZED</code></td><td><code>[NOT] WALL_AHEAD</code></td><td>Je před Karlem zeď?</td></tr>
+              <tr><td><code>[JE/NENI] VOLNO</code></td><td><code>FRONT_IS_CLEAR</code></td><td>Je před Karlem volno?</td></tr>
+              <tr><td><code>[JE/NENI] CIP</code></td><td><code>[NOT] BEEPER</code></td><td>Je na políčku značka?</td></tr>
+              <tr><td><code>[MA/NENI] KAPSA</code></td><td><code>BEEPER_IN_BAG</code></td><td>Má Karel značku v kapse?</td></tr>
+              <tr><td><code>[JE] SEVER / JIH</code></td><td><code>FACING_NORTH / SOUTH</code></td><td>Otočen na sever / jih?</td></tr>
+              <tr><td><code>[JE] VYCHOD / ZAPAD</code></td><td><code>FACING_EAST / WEST</code></td><td>Otočen na východ / západ?</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Features Card -->
+        <div class="cheatsheet-card">
+          <h4>Ovládání myší a světa / World Interaction</h4>
+          <ul style="padding-left: 1.25rem; font-size: 0.85rem; color: #cbd5e1; line-height: 1.6;">
+            <li><strong>Značka (režim):</strong> Klikněte na políčko pro přidání značky (1 až 9+). Kliknutím s klávesou Shift značku odeberete.</li>
+            <li><strong>Zeď (režim):</strong> Klikněte na mřížkovou čáru mezi dvěma políčky pro postavení nebo zbourání zdi.</li>
+            <li><strong>Karel (režim):</strong> Klikněte na políčko pro přemístění Karla; opakovaným kliknutím Karla otočíte!</li>
+            <li><strong>Bludiště:</strong> Tlačítko 🎲 vygeneruje náhodné průchozí bludiště.</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

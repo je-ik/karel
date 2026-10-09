@@ -1,0 +1,766 @@
+/**
+ * Karel the Robot - Main Application Controller
+ * Wires the Code Editor, Interpreter, World, Renderer, Audio, and UI.
+ */
+
+import { KarelWorld, Direction } from './world.js';
+import { KarelRenderer } from './renderer.js';
+import { Lexer } from './lexer.js';
+import { Parser } from './parser.js';
+import { Interpreter, InterpreterState } from './interpreter.js';
+import { KarelAudio } from './audio.js';
+import { Examples } from './examples.js';
+
+class KarelApp {
+  constructor() {
+    this.lang = localStorage.getItem('karel_lang') || 'cs';
+    this.currentTool = 'beeper'; // 'beeper', 'wall', 'karel'
+
+    // Core components
+    this.world = new KarelWorld(10, 10);
+    this.canvas = document.getElementById('karel-canvas');
+    this.renderer = new KarelRenderer(this.canvas, this.world);
+    this.interpreter = new Interpreter(this.world);
+    this.audio = new KarelAudio();
+
+    // DOM Elements
+    this.dom = {
+      langSelect: document.getElementById('lang-select'),
+      soundBtn: document.getElementById('sound-btn'),
+      helpBtn: document.getElementById('help-btn'),
+      modal: document.getElementById('cheatsheet-modal'),
+      modalCloseBtn: document.getElementById('modal-close-btn'),
+
+      exampleSelect: document.getElementById('example-select'),
+      newCodeBtn: document.getElementById('new-code-btn'),
+      codeEditor: document.getElementById('code-editor'),
+      lineNumbers: document.getElementById('line-numbers'),
+      activeLineMarker: document.getElementById('active-line-marker'),
+
+      runBtn: document.getElementById('run-btn'),
+      pauseBtn: document.getElementById('pause-btn'),
+      stepBtn: document.getElementById('step-btn'),
+      stopBtn: document.getElementById('stop-btn'),
+      speedSlider: document.getElementById('speed-slider'),
+
+      toolBeeper: document.getElementById('tool-beeper'),
+      toolWall: document.getElementById('tool-wall'),
+      toolKarel: document.getElementById('tool-karel'),
+      worldW: document.getElementById('world-w'),
+      worldH: document.getElementById('world-h'),
+      resizeBtn: document.getElementById('resize-btn'),
+      mazeBtn: document.getElementById('maze-btn'),
+      clearWorldBtn: document.getElementById('clear-world-btn'),
+
+      hudPos: document.getElementById('hud-pos'),
+      hudDir: document.getElementById('hud-dir'),
+      hudBag: document.getElementById('hud-bag'),
+      hudCellBeepers: document.getElementById('hud-cell-beepers'),
+      statusBadge: document.getElementById('status-badge'),
+
+      consoleOutput: document.getElementById('console-output'),
+      clearConsoleBtn: document.getElementById('clear-console-btn'),
+
+      // Manual buttons
+      mStep: document.getElementById('m-step'),
+      mLeft: document.getElementById('m-left'),
+      mRight: document.getElementById('m-right'),
+      mAround: document.getElementById('m-around'),
+      mPut: document.getElementById('m-put'),
+      mPick: document.getElementById('m-pick'),
+    };
+
+    this.initTranslations();
+    this.initEvents();
+    this.initExamples();
+    this.updateHUD();
+    this.updateAudioButton();
+    this.applyLanguage();
+
+    // Load first example by default
+    if (Examples.length > 0) {
+      this.loadExample(Examples[0]);
+    }
+  }
+
+  initTranslations() {
+    this.i18n = {
+      cs: {
+        cheatsheet: 'Příkazy',
+        exampleLabel: 'Příklad:',
+        selectExample: 'Vyberte úlohu...',
+        newBtn: 'Nový',
+        runBtn: 'Spustit',
+        pauseBtn: 'Pauza',
+        stepBtn: 'Krok',
+        resetBtn: 'Reset',
+        manualTitle: 'Ruční řízení:',
+        toolBeeper: 'Značka',
+        toolWall: 'Zeď',
+        toolKarel: 'Karel',
+        gridSize: 'Mřížka:',
+        resizeBtn: 'OK',
+        mazeBtn: '🎲 Bludiště',
+        clearBtn: 'Vyčistit',
+        consoleTitle: 'Konzole & Hlášení:',
+        statusIdle: 'PŘIPRAVEN',
+        statusRunning: 'BĚŽÍ',
+        statusPaused: 'POZASTAVEN',
+        statusFinished: 'DOKONČENO',
+        statusError: 'CHYBA',
+        editorPlaceholder: '// Zde napište program pro Karla...',
+        dirNorth: 'SEVER',
+        dirEast: 'VÝCHOD',
+        dirSouth: 'JIH',
+        dirWest: 'ZÁPAD',
+      },
+      en: {
+        cheatsheet: 'Cheatsheet',
+        exampleLabel: 'Example:',
+        selectExample: 'Select challenge...',
+        newBtn: 'New',
+        runBtn: 'Run',
+        pauseBtn: 'Pause',
+        stepBtn: 'Step',
+        resetBtn: 'Reset',
+        manualTitle: 'Manual Pad:',
+        toolBeeper: 'Beeper',
+        toolWall: 'Wall',
+        toolKarel: 'Karel',
+        gridSize: 'Grid:',
+        resizeBtn: 'OK',
+        mazeBtn: '🎲 Maze',
+        clearBtn: 'Clear',
+        consoleTitle: 'Console & Logs:',
+        statusIdle: 'READY',
+        statusRunning: 'RUNNING',
+        statusPaused: 'PAUSED',
+        statusFinished: 'FINISHED',
+        statusError: 'ERROR',
+        editorPlaceholder: '// Write Karel code here...',
+        dirNorth: 'NORTH',
+        dirEast: 'EAST',
+        dirSouth: 'SOUTH',
+        dirWest: 'WEST',
+      },
+    };
+  }
+
+  applyLanguage() {
+    const t = this.i18n[this.lang];
+    this.dom.langSelect.value = this.lang;
+
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const key = el.getAttribute('data-i18n');
+      if (t[key]) {
+        el.textContent = t[key];
+      }
+    });
+
+    this.dom.codeEditor.placeholder = t.editorPlaceholder;
+
+    // Update manual buttons text
+    if (this.lang === 'cs') {
+      this.dom.mStep.textContent = 'KROK';
+      this.dom.mLeft.textContent = 'VLEVO';
+      this.dom.mRight.textContent = 'VPRAVO';
+      this.dom.mAround.textContent = 'VZAD';
+      this.dom.mPut.textContent = 'POLOŽ';
+      this.dom.mPick.textContent = 'ZVEDNI';
+    } else {
+      this.dom.mStep.textContent = 'STEP';
+      this.dom.mLeft.textContent = 'LEFT';
+      this.dom.mRight.textContent = 'RIGHT';
+      this.dom.mAround.textContent = 'AROUND';
+      this.dom.mPut.textContent = 'PUT';
+      this.dom.mPick.textContent = 'PICK';
+    }
+
+    // Refresh example names in dropdown
+    const selectedId = this.dom.exampleSelect.value;
+    this.initExamples();
+    this.dom.exampleSelect.value = selectedId;
+
+    this.updateHUD();
+  }
+
+  initExamples() {
+    const select = this.dom.exampleSelect;
+    select.innerHTML = `<option value="" disabled ${!select.value ? 'selected' : ''}>${this.i18n[this.lang].selectExample}</option>`;
+
+    Examples.forEach((ex) => {
+      const opt = document.createElement('option');
+      opt.value = ex.id;
+      opt.textContent = ex.title[this.lang] || ex.title.cs;
+      select.appendChild(opt);
+    });
+  }
+
+  loadExample(ex) {
+    if (!ex) return;
+    this.interpreter.stop();
+
+    // Load world
+    this.world.deserialize(JSON.parse(JSON.stringify(ex.world)));
+    this.world.saveInitialSnapshot();
+    this.dom.worldW.value = this.world.width;
+    this.dom.worldH.value = this.world.height;
+
+    // Load code
+    this.dom.codeEditor.value = ex.code[this.lang] || ex.code.cs;
+    this.updateLineNumbers();
+
+    // Render & Sync
+    this.renderer.syncRobotImmediate();
+    this.updateHUD();
+    this.log(`Načten příklad: ${ex.title[this.lang]} / Loaded example`, 'info');
+  }
+
+  initEvents() {
+    // Language change
+    this.dom.langSelect.addEventListener('change', (e) => {
+      this.lang = e.target.value;
+      localStorage.setItem('karel_lang', this.lang);
+      this.applyLanguage();
+
+      // If current code matches previous example, update it to new language code
+      const currentEx = Examples.find((ex) => ex.id === this.dom.exampleSelect.value);
+      if (currentEx) {
+        this.dom.codeEditor.value = currentEx.code[this.lang];
+        this.updateLineNumbers();
+      }
+    });
+
+    // Sound toggle
+    this.dom.soundBtn.addEventListener('click', () => {
+      this.audio.toggleMute();
+      this.updateAudioButton();
+    });
+
+    // Help modal
+    this.dom.helpBtn.addEventListener('click', () => {
+      this.dom.modal.classList.add('open');
+    });
+    this.dom.modalCloseBtn.addEventListener('click', () => {
+      this.dom.modal.classList.remove('open');
+    });
+    this.dom.modal.addEventListener('click', (e) => {
+      if (e.target === this.dom.modal) {
+        this.dom.modal.classList.remove('open');
+      }
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.dom.modal.classList.contains('open')) {
+        this.dom.modal.classList.remove('open');
+      }
+      // F5 to run, F10 to step
+      if (e.key === 'F5') {
+        e.preventDefault();
+        this.handleRun();
+      }
+      if (e.key === 'F10') {
+        e.preventDefault();
+        this.handleStep();
+      }
+    });
+
+    // Editor events
+    this.dom.codeEditor.addEventListener('input', () => this.updateLineNumbers());
+    this.dom.codeEditor.addEventListener('scroll', () => {
+      this.dom.lineNumbers.scrollTop = this.dom.codeEditor.scrollTop;
+    });
+
+    // Tab key in editor
+    this.dom.codeEditor.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = this.dom.codeEditor.selectionStart;
+        const end = this.dom.codeEditor.selectionEnd;
+        this.dom.codeEditor.value =
+          this.dom.codeEditor.value.substring(0, start) +
+          '  ' +
+          this.dom.codeEditor.value.substring(end);
+        this.dom.codeEditor.selectionStart = this.dom.codeEditor.selectionEnd = start + 2;
+        this.updateLineNumbers();
+      }
+    });
+
+    // Example selection
+    this.dom.exampleSelect.addEventListener('change', (e) => {
+      const ex = Examples.find((item) => item.id === e.target.value);
+      if (ex) this.loadExample(ex);
+    });
+
+    // New code button
+    this.dom.newCodeBtn.addEventListener('click', () => {
+      this.dom.exampleSelect.value = '';
+      this.dom.codeEditor.value = '';
+      this.updateLineNumbers();
+      this.interpreter.stop();
+      this.hideActiveLine();
+      this.log('Editor byl vyčištěn / Editor cleared', 'info');
+    });
+
+    // Execution buttons
+    this.dom.runBtn.addEventListener('click', () => this.handleRun());
+    this.dom.pauseBtn.addEventListener('click', () => this.interpreter.pause());
+    this.dom.stepBtn.addEventListener('click', () => this.handleStep());
+    this.dom.stopBtn.addEventListener('click', () => this.handleStop());
+
+    // Speed slider
+    this.dom.speedSlider.addEventListener('input', (e) => {
+      // Invert slider: 0 is slow (600ms), 600 is fastest (0ms)
+      const val = parseInt(e.target.value, 10);
+      const ms = 600 - val;
+      this.interpreter.setSpeed(ms);
+    });
+    // Set initial speed
+    this.interpreter.setSpeed(600 - parseInt(this.dom.speedSlider.value, 10));
+
+    // Manual Pad Buttons
+    this.dom.mStep.addEventListener('click', () => this.handleManualAction('STEP'));
+    this.dom.mLeft.addEventListener('click', () => this.handleManualAction('LEFT'));
+    this.dom.mRight.addEventListener('click', () => this.handleManualAction('RIGHT'));
+    this.dom.mAround.addEventListener('click', () => this.handleManualAction('TURN_AROUND'));
+    this.dom.mPut.addEventListener('click', () => this.handleManualAction('PUT'));
+    this.dom.mPick.addEventListener('click', () => this.handleManualAction('PICK'));
+
+    // World tool switching
+    const tools = [
+      { btn: this.dom.toolBeeper, mode: 'beeper' },
+      { btn: this.dom.toolWall, mode: 'wall' },
+      { btn: this.dom.toolKarel, mode: 'karel' },
+    ];
+    tools.forEach(({ btn, mode }) => {
+      btn.addEventListener('click', () => {
+        tools.forEach((t) => t.btn.classList.remove('btn-active'));
+        btn.classList.add('btn-active');
+        this.currentTool = mode;
+      });
+    });
+
+    // World resize
+    this.dom.resizeBtn.addEventListener('click', () => {
+      const w = parseInt(this.dom.worldW.value, 10);
+      const h = parseInt(this.dom.worldH.value, 10);
+      this.world.resize(w, h);
+      this.renderer.syncRobotImmediate();
+      this.updateHUD();
+      this.log(`Rozměry světa změněny na ${this.world.width} × ${this.world.height}`, 'info');
+    });
+
+    // Clear world
+    this.dom.clearWorldBtn.addEventListener('click', () => {
+      this.interpreter.stop();
+      this.world.clear();
+      this.renderer.syncRobotImmediate();
+      this.updateHUD();
+      this.log('Svět byl vyčištěn / World cleared', 'info');
+    });
+
+    // Random maze generator
+    this.dom.mazeBtn.addEventListener('click', () => {
+      this.interpreter.stop();
+      this.generateMaze();
+      this.renderer.syncRobotImmediate();
+      this.updateHUD();
+      this.log('Vygenerováno náhodné bludiště / Generated random maze', 'info');
+    });
+
+    // Clear console
+    this.dom.clearConsoleBtn.addEventListener('click', () => {
+      this.dom.consoleOutput.innerHTML = '';
+    });
+
+    // Canvas click interaction for world editing
+    this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.handleCanvasClick(e, true);
+    });
+
+    // Interpreter Event Listeners
+    this.interpreter.on('stateChange', (state) => this.handleStateChange(state));
+    this.interpreter.on('highlightLine', (line) => this.highlightLine(line));
+    this.interpreter.on('action', (action, karel) => this.handleInterpreterAction(action, karel));
+    this.interpreter.on('error', (err) => this.handleInterpreterError(err));
+    this.interpreter.on('finish', (stats) => this.handleInterpreterFinish(stats));
+  }
+
+  updateAudioButton() {
+    this.dom.soundBtn.textContent = this.audio.isMuted() ? '🔇' : '🔊';
+  }
+
+  updateLineNumbers() {
+    const text = this.dom.codeEditor.value;
+    const lines = text.split('\n').length;
+    let numbers = '';
+    for (let i = 1; i <= lines; i++) {
+      numbers += i + '\n';
+    }
+    this.dom.lineNumbers.textContent = numbers;
+  }
+
+  highlightLine(line) {
+    if (!line) {
+      this.hideActiveLine();
+      return;
+    }
+    const marker = this.dom.activeLineMarker;
+    const lineHeight = 21.6; // matching 13.5px * 1.6
+    const top = 12 + (line - 1) * lineHeight - this.dom.codeEditor.scrollTop;
+    marker.style.top = `${top}px`;
+    marker.style.display = 'block';
+
+    // Scroll line into view if out of editor bounds
+    const editor = this.dom.codeEditor;
+    const lineTop = (line - 1) * lineHeight;
+    if (lineTop < editor.scrollTop || lineTop > editor.scrollTop + editor.clientHeight - 40) {
+      editor.scrollTop = Math.max(0, lineTop - editor.clientHeight / 2);
+    }
+  }
+
+  hideActiveLine() {
+    this.dom.activeLineMarker.style.display = 'none';
+  }
+
+  handleStateChange(state) {
+    const badge = this.dom.statusBadge;
+    badge.className = 'status-badge';
+
+    const t = this.i18n[this.lang];
+
+    switch (state) {
+      case InterpreterState.IDLE:
+        badge.classList.add('status-idle');
+        badge.textContent = t.statusIdle;
+        this.dom.runBtn.disabled = false;
+        this.dom.pauseBtn.disabled = true;
+        this.dom.stepBtn.disabled = false;
+        break;
+
+      case InterpreterState.RUNNING:
+        badge.classList.add('status-running');
+        badge.textContent = t.statusRunning;
+        this.dom.runBtn.disabled = true;
+        this.dom.pauseBtn.disabled = false;
+        this.dom.stepBtn.disabled = true;
+        break;
+
+      case InterpreterState.PAUSED:
+        badge.classList.add('status-paused');
+        badge.textContent = t.statusPaused;
+        this.dom.runBtn.disabled = false;
+        this.dom.pauseBtn.disabled = true;
+        this.dom.stepBtn.disabled = false;
+        break;
+
+      case InterpreterState.FINISHED:
+        badge.classList.add('status-finished');
+        badge.textContent = t.statusFinished;
+        this.dom.runBtn.disabled = false;
+        this.dom.pauseBtn.disabled = true;
+        this.dom.stepBtn.disabled = false;
+        break;
+
+      case InterpreterState.ERROR:
+        badge.classList.add('status-error');
+        badge.textContent = t.statusError;
+        this.dom.runBtn.disabled = false;
+        this.dom.pauseBtn.disabled = true;
+        this.dom.stepBtn.disabled = false;
+        break;
+    }
+  }
+
+  compile() {
+    const code = this.dom.codeEditor.value;
+    if (!code.trim()) {
+      throw new Error('Program je prázdný / Program is empty');
+    }
+    const lexer = new Lexer(code);
+    const tokens = lexer.tokenize();
+    const parser = new Parser(tokens);
+    return parser.parse();
+  }
+
+  handleRun() {
+    if (this.interpreter.state === InterpreterState.PAUSED) {
+      this.interpreter.run();
+      return;
+    }
+
+    try {
+      const ast = this.compile();
+      this.interpreter.loadProgram(ast);
+      this.log('Spouštím program... / Running program...', 'info');
+      this.interpreter.run();
+    } catch (err) {
+      this.log(`Chyba syntaxe: ${err.message}`, 'error');
+      this.audio.playCrash();
+    }
+  }
+
+  handleStep() {
+    if (
+      this.interpreter.state === InterpreterState.IDLE ||
+      this.interpreter.state === InterpreterState.FINISHED ||
+      this.interpreter.state === InterpreterState.ERROR
+    ) {
+      try {
+        const ast = this.compile();
+        this.interpreter.loadProgram(ast);
+      } catch (err) {
+        this.log(`Chyba syntaxe: ${err.message}`, 'error');
+        this.audio.playCrash();
+        return;
+      }
+    }
+    this.interpreter.step();
+  }
+
+  handleStop() {
+    this.interpreter.stop();
+    this.world.restoreInitialSnapshot();
+    this.renderer.syncRobotImmediate();
+    this.updateHUD();
+    this.hideActiveLine();
+    this.log('Program zastaven a svět resetován / Program stopped & reset', 'info');
+  }
+
+  handleInterpreterAction(action, karel) {
+    this.renderer.animateToKarel();
+    this.updateHUD();
+
+    switch (action) {
+      case 'STEP':
+        this.audio.playStep();
+        break;
+      case 'LEFT':
+      case 'RIGHT':
+      case 'TURN_AROUND':
+        this.audio.playTurn();
+        break;
+      case 'PUT':
+        this.audio.playPut();
+        break;
+      case 'PICK':
+        this.audio.playPick();
+        break;
+    }
+  }
+
+  handleInterpreterError(errorMsg) {
+    this.audio.playCrash();
+    this.log(`Chyba běhu: ${errorMsg}`, 'error');
+  }
+
+  handleInterpreterFinish(stats) {
+    this.audio.playVictory();
+    this.log(
+      `Program úspěšně dokončen! (${stats.actionCount} akcí, ${stats.operationCount} operací)`,
+      'success'
+    );
+  }
+
+  handleManualAction(action) {
+    if (this.interpreter.state === InterpreterState.RUNNING) {
+      this.interpreter.pause();
+    }
+
+    try {
+      switch (action) {
+        case 'STEP':
+          this.world.step();
+          this.audio.playStep();
+          this.log('Ručně: KROK / STEP', 'info');
+          break;
+        case 'LEFT':
+          this.world.turnLeft();
+          this.audio.playTurn();
+          this.log('Ručně: VLEVO-BOK / TURN_LEFT', 'info');
+          break;
+        case 'RIGHT':
+          this.world.turnRight();
+          this.audio.playTurn();
+          this.log('Ručně: VPRAVO-BOK / TURN_RIGHT', 'info');
+          break;
+        case 'TURN_AROUND':
+          this.world.turnAround();
+          this.audio.playTurn();
+          this.log('Ručně: CELEM-VZAD / TURN_AROUND', 'info');
+          break;
+        case 'PUT':
+          this.world.putBeeper();
+          this.audio.playPut();
+          this.log('Ručně: POLOŽ / PUT', 'info');
+          break;
+        case 'PICK':
+          this.world.pickBeeper();
+          this.audio.playPick();
+          this.log('Ručně: ZVEDNI / PICK', 'info');
+          break;
+      }
+      this.renderer.animateToKarel();
+      this.updateHUD();
+    } catch (err) {
+      this.audio.playCrash();
+      this.log(`Chyba: ${err.message}`, 'error');
+    }
+  }
+
+  handleCanvasClick(e, isRightClick = false) {
+    const rect = this.canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+
+    const hit = this.renderer.hitTest(px, py);
+    if (!hit) return;
+
+    if (this.currentTool === 'beeper') {
+      if (hit.type === 'CELL') {
+        const delta = isRightClick || e.shiftKey ? -1 : 1;
+        this.world.addBeeper(hit.x, hit.y, delta);
+        if (delta > 0) this.audio.playPut();
+        else this.audio.playPick();
+        this.renderer.render();
+        this.updateHUD();
+      }
+    } else if (this.currentTool === 'wall') {
+      if (hit.type === 'WALL_V') {
+        this.world.toggleVerticalWall(hit.x, hit.y);
+        this.audio.playStep();
+        this.renderer.render();
+      } else if (hit.type === 'WALL_H') {
+        this.world.toggleHorizontalWall(hit.x, hit.y);
+        this.audio.playStep();
+        this.renderer.render();
+      }
+    } else if (this.currentTool === 'karel') {
+      if (hit.type === 'CELL') {
+        if (this.world.karel.x === hit.x && this.world.karel.y === hit.y) {
+          // Rotate Karel on same cell click
+          this.world.turnRight();
+          this.audio.playTurn();
+        } else {
+          // Move Karel to new cell
+          this.world.karel.x = hit.x;
+          this.world.karel.y = hit.y;
+          this.audio.playStep();
+        }
+        this.renderer.syncRobotImmediate();
+        this.updateHUD();
+      }
+    }
+
+    // Save as new initial world configuration
+    this.world.saveInitialSnapshot();
+  }
+
+  generateMaze() {
+    this.world.clear();
+    const w = this.world.width;
+    const h = this.world.height;
+
+    // Place all walls initially
+    for (let x = 1; x < w; x++) {
+      for (let y = 1; y <= h; y++) {
+        this.world.toggleVerticalWall(x, y);
+      }
+    }
+    for (let x = 1; x <= w; x++) {
+      for (let y = 1; y < h; y++) {
+        this.world.toggleHorizontalWall(x, y);
+      }
+    }
+
+    // Randomized Kruskal / DFS maze generation
+    const visited = new Set();
+    const stack = [];
+
+    const cellKey = (x, y) => `${x},${y}`;
+    const startX = 1;
+    const startY = 1;
+    visited.add(cellKey(startX, startY));
+    stack.push({ x: startX, y: startY });
+
+    while (stack.length > 0) {
+      const current = stack[stack.length - 1];
+      const neighbors = [];
+
+      const dirs = [
+        { dx: 0, dy: 1, dir: Direction.NORTH },
+        { dx: 1, dy: 0, dir: Direction.EAST },
+        { dx: 0, dy: -1, dir: Direction.SOUTH },
+        { dx: -1, dy: 0, dir: Direction.WEST },
+      ];
+
+      for (const d of dirs) {
+        const nx = current.x + d.dx;
+        const ny = current.y + d.dy;
+        if (nx >= 1 && nx <= w && ny >= 1 && ny <= h && !visited.has(cellKey(nx, ny))) {
+          neighbors.push({ x: nx, y: ny, dir: d.dir });
+        }
+      }
+
+      if (neighbors.length > 0) {
+        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+        // Knock down wall between current and next
+        if (next.dir === Direction.NORTH) {
+          this.world.horizontalWalls.delete(`h:${current.x}:${current.y}`);
+        } else if (next.dir === Direction.SOUTH) {
+          this.world.horizontalWalls.delete(`h:${current.x}:${current.y - 1}`);
+        } else if (next.dir === Direction.EAST) {
+          this.world.verticalWalls.delete(`v:${current.x}:${current.y}`);
+        } else if (next.dir === Direction.WEST) {
+          this.world.verticalWalls.delete(`v:${current.x - 1}:${current.y}`);
+        }
+
+        visited.add(cellKey(next.x, next.y));
+        stack.push(next);
+      } else {
+        stack.pop();
+      }
+    }
+
+    // Place a goal beeper at opposite corner
+    this.world.setBeepers(w, h, 1);
+    this.world.karel.x = 1;
+    this.world.karel.y = 1;
+    this.world.karel.dir = Direction.EAST;
+    this.world.saveInitialSnapshot();
+  }
+
+  updateHUD() {
+    const k = this.world.karel;
+    this.dom.hudPos.textContent = `[${k.x}, ${k.y}]`;
+
+    const t = this.i18n[this.lang];
+    const dirMap = {
+      [Direction.NORTH]: t.dirNorth,
+      [Direction.EAST]: t.dirEast,
+      [Direction.SOUTH]: t.dirSouth,
+      [Direction.WEST]: t.dirWest,
+    };
+    this.dom.hudDir.textContent = dirMap[k.dir] || k.dir;
+
+    this.dom.hudBag.textContent = k.bag === Infinity ? '∞' : String(k.bag);
+    this.dom.hudCellBeepers.textContent = String(this.world.getBeepers(k.x, k.y));
+  }
+
+  log(message, type = 'info') {
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${type}`;
+
+    const time = new Date().toLocaleTimeString();
+    entry.textContent = `[${time}] ${message}`;
+
+    this.dom.consoleOutput.appendChild(entry);
+    this.dom.consoleOutput.scrollTop = this.dom.consoleOutput.scrollHeight;
+  }
+}
+
+// Start application when DOM is ready
+window.addEventListener('DOMContentLoaded', () => {
+  window.karelApp = new KarelApp();
+});
