@@ -541,4 +541,65 @@ PUT
 `,
     },
   },
+
+  {
+    id: 'checkerboard_modulo',
+    title: { cs: '8. Šachovnice (Proměnné & Modulo)', en: '8. Checkerboard (Variables & Modulo)' },
+    desc: {
+      cs: 'Použití proměnných (LET idx idx + 1) a operátoru modulo % pro střídavé kladení značek.',
+      en: 'Using variables (LET idx idx + 1) and modulo operator % for alternating beepers.',
+    },
+    world: {
+      width: 8,
+      height: 4,
+      karel: { x: 1, y: 1, dir: 'EAST', bag: Infinity },
+      verticalWalls: [],
+      horizontalWalls: [],
+      beepers: [],
+    },
+    code: {
+      cs: `// ==========================================
+// ŠACHOVNICE S VYUŽITÍM PROMĚNNÝCH A MODULO
+// Demonstrace: LET idx idx + 1, modulo %
+// ==========================================
+
+LET idx 0
+
+DOKUD NENI ZED
+  // Podmínka s modulo: sudé pole má idx % 2 == 0
+  KDYZ idx % 2 == 0
+    POLOZ
+  KONEC
+  KROK
+  LET idx idx + 1
+KONEC
+
+// Ošetření posledního políčka u zdi
+KDYZ idx % 2 == 0
+  POLOZ
+KONEC
+`,
+      en: `// ==========================================
+// CHECKERBOARD USING VARIABLES & MODULO
+// Demonstrating: LET idx idx + 1, modulo %
+// ==========================================
+
+LET idx 0
+
+WHILE FRONT_IS_CLEAR
+  // Modulo condition: even tiles have idx % 2 == 0
+  IF idx % 2 == 0
+    PUT
+  END
+  STEP
+  LET idx idx + 1
+END
+
+// Handle the final tile at the wall
+IF idx % 2 == 0
+  PUT
+END
+`,
+    },
+  },
 ];

@@ -84,6 +84,7 @@
           <button type="button" class="btn btn-snippet" data-insert="while" title="Vložit cyklus DOKUD">+ DOKUD</button>
           <button type="button" class="btn btn-snippet" data-insert="if" title="Vložit podmínku KDYŽ">+ KDYŽ</button>
           <button type="button" class="btn btn-snippet" data-insert="proc" title="Vložit definici PŘÍKAZ">+ PŘÍKAZ</button>
+          <button type="button" class="btn btn-snippet" data-insert="let" title="Vložit proměnnou (LET idx = 0)">+ LET</button>
         </div>
 
         <!-- Code Editor Area -->
@@ -205,6 +206,29 @@ KROK
             <li><code>[MA / NENI] KAPSA</code> – má Karel v kapse ještě značku? (EN: <code>BEEPER_IN_BAG</code>)</li>
             <li><code>[JE] SEVER / JIH / VYCHOD / ZAPAD</code> – směr otočení Karla. (EN: <code>FACING_NORTH / SOUTH / EAST / WEST</code>)</li>
           </ul>
+        </div>
+
+        <!-- Section 8: Proměnné a modulo -->
+        <div class="guide-section">
+          <h3>🔢 <span data-i18n="guideVarTitle">8. Proměnné, aritmetika a modulo (%)</span></h3>
+          <p data-i18n="guideVarP1">
+            Pro pokročilé algoritmy můžete používat proměnné s klíčovým slovem <code>LET</code> (rovnítko <code>=</code> je volitelné), aritmetiku (<code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code> nebo <code>MOD</code>) a porovnávat v podmínkách i cyklech (<code>idx &lt; 5</code>, <code>idx % 2 == 0</code>):
+          </p>
+          <div class="guide-code-box">
+<button class="btn btn-insert-sample" data-sample="var" data-i18n="insertSample">Vložit do editoru</button>
+// Kladení značek na každé sudé políčko:
+LET idx 0
+DOKUD NENI ZED
+  KDYZ idx % 2 == 0
+    POLOZ
+  KONEC
+  KROK
+  LET idx idx + 1
+KONEC
+KDYZ idx % 2 == 0
+  POLOZ
+KONEC
+          </div>
         </div>
       </div>
 

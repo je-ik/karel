@@ -138,6 +138,8 @@ class KarelApp {
         guideProcTitle: '6. Vlastní příkazy (Procedury)',
         guideProcP1: 'Naučte Karla nový povel! Definice začíná slovem PRIKAZ <nazev> a končí KONEC:',
         guideSensorsTitle: '7. Dostupné podmínky a senzory',
+        guideVarTitle: '8. Proměnné, aritmetika a modulo (%)',
+        guideVarP1: 'Pro pokročilé algoritmy můžete používat proměnné s klíčovým slovem LET (rovnítko = je volitelné), aritmetiku (+, -, *, /, % nebo MOD) a porovnávat v podmínkách i cyklech (idx < 5, idx % 2 == 0):',
       },
       en: {
         cheatsheet: 'Cheatsheet',
@@ -186,6 +188,8 @@ class KarelApp {
         guideProcTitle: '6. Custom Procedures (DEFINE)',
         guideProcP1: 'Teach Karel a new command! Begins with DEFINE <name> and ends with END:',
         guideSensorsTitle: '7. Available Conditions & Sensors',
+        guideVarTitle: '8. Variables, Arithmetic & Modulo (%)',
+        guideVarP1: 'For advanced algorithms, use variables with LET (equals = is optional), arithmetic (+, -, *, /, % or MOD), and comparisons in conditions and loops (idx < 5, idx % 2 == 0):',
       },
     };
   }
@@ -233,6 +237,11 @@ class KarelApp {
           ? 'PRIKAZ MOJE-PROCEDURA\n  KROK\nKONEC\n'
           : 'DEFINE MY_PROCEDURE\n  STEP\nEND\n';
         break;
+      case 'let':
+        snippet = isCs
+          ? 'LET idx = 0\n'
+          : 'LET idx = 0\n';
+        break;
     }
 
     this.switchTab('editor');
@@ -269,6 +278,11 @@ class KarelApp {
         sample = isCs
           ? 'PRIKAZ VPRAVO-BOK\n  OPAKUJ 3 KRAT\n    VLEVO-BOK\n  KONEC\nKONEC\n\n// Použití:\nKROK\nVPRAVO-BOK\nKROK\n'
           : 'DEFINE TURN_RIGHT\n  REPEAT 3 TIMES\n    TURN_LEFT\n  END\nEND\n\n// Usage:\nSTEP\nTURN_RIGHT\nSTEP\n';
+        break;
+      case 'var':
+        sample = isCs
+          ? '// Kladení značek na každé sudé políčko:\nLET idx 0\n\nDOKUD NENI ZED\n  KDYZ idx % 2 == 0\n    POLOZ\n  KONEC\n  KROK\n  LET idx idx + 1\nKONEC\n\nKDYZ idx % 2 == 0\n  POLOZ\nKONEC\n'
+          : '// Placing beepers on alternating tiles:\nLET idx 0\n\nWHILE FRONT_IS_CLEAR\n  IF idx % 2 == 0\n    PUT\n  END\n  STEP\n  LET idx idx + 1\nEND\n\nIF idx % 2 == 0\n  PUT\nEND\n';
         break;
     }
 

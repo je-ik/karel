@@ -81,3 +81,49 @@ export class ConditionNode extends ASTNode {
     this.inverted = inverted;
   }
 }
+
+export class AssignNode extends ASTNode {
+  constructor(name, expr, loc) {
+    super('Assign', loc);
+    this.name = name;
+    this.expr = expr;
+  }
+}
+
+export class BinaryOpNode extends ASTNode {
+  constructor(op, left, right, loc) {
+    super('BinaryOp', loc);
+    this.op = op; // '+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>='
+    this.left = left;
+    this.right = right;
+  }
+}
+
+export class UnaryOpNode extends ASTNode {
+  constructor(op, operand, loc) {
+    super('UnaryOp', loc);
+    this.op = op; // '-', '!'
+    this.operand = operand;
+  }
+}
+
+export class NumberLiteralNode extends ASTNode {
+  constructor(value, loc) {
+    super('NumberLiteral', loc);
+    this.value = value;
+  }
+}
+
+export class VariableNode extends ASTNode {
+  constructor(name, loc) {
+    super('Variable', loc);
+    this.name = name;
+  }
+}
+
+export class ExprConditionNode extends ASTNode {
+  constructor(expr, loc) {
+    super('ExprCondition', loc);
+    this.expr = expr;
+  }
+}

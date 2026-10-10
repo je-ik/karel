@@ -12,7 +12,13 @@ import {
   RepeatNode,
   WhileNode,
   IfNode,
-  ConditionNode
+  ConditionNode,
+  AssignNode,
+  BinaryOpNode,
+  UnaryOpNode,
+  NumberLiteralNode,
+  VariableNode,
+  ExprConditionNode
 } from './ast.js';
 
 export class Parser {
@@ -188,6 +194,18 @@ export class Parser {
     const token = this.peek();
     const loc = { line: token.line, col: token.col };
 
+    // Variable assignment: LET <name> [=] <expr>
+    if (this.match(TokenType.KW_LET)) {
+      const nameToken = this.consume(
+        TokenType.IDENTIFIER,
+        "Očekáván název proměnné za LET / Expected variable name after LET"
+      );
+      // Optional '='
+      this.match(TokenType.ASSIGN);
+      const expr = this.parseExpression();
+      return new AssignNode(nameToken.value, expr, loc);
+    }
+
     // Repeat loop
     if (this.match(TokenType.KW_REPEAT)) {
       return this.parseRepeat(loc);
@@ -235,8 +253,15 @@ export class Parser {
       return new CommandNode('PICK', loc);
     }
 
-    // User defined procedure call
+    // User defined procedure call or direct assignment <id> = <expr>
     if (this.check(TokenType.IDENTIFIER)) {
+      const nextToken = this.tokens[this.pos + 1];
+      if (nextToken && nextToken.type === TokenType.ASSIGN) {
+        const idToken = this.advance();
+        this.advance(); // consume '='
+        const expr = this.parseExpression();
+        return new AssignNode(idToken.value, expr, loc);
+      }
       const idToken = this.advance();
       this.consumeOptionalParens();
       return new CallNode(idToken.value, loc);
@@ -260,17 +285,12 @@ export class Parser {
    * or REPEAT (n) { ... }
    */
   parseRepeat(loc) {
-    let count;
+    let countExpr;
     if (this.match(TokenType.LPAREN)) {
-      const numToken = this.consume(TokenType.NUMBER, "Očekáváno číslo počtu opakování / Expected number");
-      this.consume(TokenType.RPAREN, "Očekávána ')' za číslem / Expected ')'");
-      count = numToken.value;
+      countExpr = this.parseExpression();
+      this.consume(TokenType.RPAREN, "Očekávána ')' za výrazem / Expected ')'");
     } else {
-      const numToken = this.consume(
-        TokenType.NUMBER,
-        "Očekáváno číslo počtu opakování za OPAKUJ / Expected repeat count number"
-      );
-      count = numToken.value;
+      countExpr = this.parseExpression();
     }
 
     // Optional KRAT / TIMES
@@ -281,7 +301,97 @@ export class Parser {
     this.skipPunctuation();
 
     const body = this.parseStatementBlock(hasBrace ? 'BRACE' : 'END');
-    return new RepeatNode(count, body, loc);
+    return new RepeatNode(countExpr, body, loc);
+  }
+
+  parseExpression() {
+    return this.parseComparison();
+  }
+
+  parseComparison() {
+    let expr = this.parseAddition();
+    while (
+      this.check(TokenType.EQ) ||
+      this.check(TokenType.NEQ) ||
+      this.check(TokenType.LT) ||
+      this.check(TokenType.LTE) ||
+      this.check(TokenType.GT) ||
+      this.check(TokenType.GTE)
+    ) {
+      const opToken = this.advance();
+      const right = this.parseAddition();
+      expr = new BinaryOpNode(opToken.value, expr, right, {
+        line: opToken.line,
+        col: opToken.col,
+      });
+    }
+    return expr;
+  }
+
+  parseAddition() {
+    let expr = this.parseMultiplication();
+    while (this.check(TokenType.PLUS) || this.check(TokenType.MINUS)) {
+      const opToken = this.advance();
+      const right = this.parseMultiplication();
+      expr = new BinaryOpNode(opToken.value, expr, right, {
+        line: opToken.line,
+        col: opToken.col,
+      });
+    }
+    return expr;
+  }
+
+  parseMultiplication() {
+    let expr = this.parseUnary();
+    while (
+      this.check(TokenType.STAR) ||
+      this.check(TokenType.SLASH) ||
+      this.check(TokenType.PERCENT)
+    ) {
+      const opToken = this.advance();
+      const op = opToken.value === '%' || canonicalize(opToken.value) === 'MOD' ? '%' : opToken.value;
+      const right = this.parseUnary();
+      expr = new BinaryOpNode(op, expr, right, {
+        line: opToken.line,
+        col: opToken.col,
+      });
+    }
+    return expr;
+  }
+
+  parseUnary() {
+    if (this.check(TokenType.MINUS) || this.check(TokenType.KW_NOT)) {
+      const opToken = this.advance();
+      const operand = this.parseUnary();
+      return new UnaryOpNode(opToken.value, operand, {
+        line: opToken.line,
+        col: opToken.col,
+      });
+    }
+    return this.parsePrimary();
+  }
+
+  parsePrimary() {
+    const token = this.peek();
+    const loc = { line: token.line, col: token.col };
+
+    if (this.match(TokenType.NUMBER)) {
+      return new NumberLiteralNode(token.value, loc);
+    }
+
+    if (this.match(TokenType.IDENTIFIER)) {
+      return new VariableNode(token.value, loc);
+    }
+
+    if (this.match(TokenType.LPAREN)) {
+      const expr = this.parseExpression();
+      this.consume(TokenType.RPAREN, "Očekávána ')' za výrazem / Expected ')' after expression");
+      return expr;
+    }
+
+    throw new Error(
+      `Očekáváno číslo nebo proměnná / Expected number or variable, but found '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
+    );
   }
 
   /**
@@ -342,6 +452,19 @@ export class Parser {
    */
   parseCondition() {
     const loc = { line: this.peek().line, col: this.peek().col };
+
+    // Check if condition is a numeric or comparison expression (e.g. x < 5 or idx % 2 == 0)
+    if (
+      this.check(TokenType.IDENTIFIER) ||
+      this.check(TokenType.NUMBER) ||
+      (this.check(TokenType.LPAREN) &&
+        (this.tokens[this.pos + 1]?.type === TokenType.IDENTIFIER ||
+          this.tokens[this.pos + 1]?.type === TokenType.NUMBER))
+    ) {
+      const expr = this.parseExpression();
+      return new ExprConditionNode(expr, loc);
+    }
+
     let inverted = false;
 
     // Optional 'JE' / 'IS'

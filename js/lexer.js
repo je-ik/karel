@@ -24,6 +24,21 @@ export const TokenType = {
   KW_DEFINE: 'KW_DEFINE',
   KW_IS: 'KW_IS',
   KW_NOT: 'KW_NOT',
+  KW_LET: 'KW_LET',
+
+  // Operators & Comparisons
+  ASSIGN: 'ASSIGN',     // =
+  PLUS: 'PLUS',         // +
+  MINUS: 'MINUS',       // -
+  STAR: 'STAR',         // *
+  SLASH: 'SLASH',       // /
+  PERCENT: 'PERCENT',   // % or MOD
+  EQ: 'EQ',             // ==
+  NEQ: 'NEQ',           // !=
+  LT: 'LT',             // <
+  LTE: 'LTE',           // <=
+  GT: 'GT',             // >
+  GTE: 'GTE',           // >=
 
   // Condition Atoms
   COND_WALL: 'COND_WALL',           // ZED / WALL / FRONT_BLOCKED
@@ -138,6 +153,13 @@ const KEYWORD_MAP = {
 
   'NENI': TokenType.KW_NOT,
   'NOT': TokenType.KW_NOT,
+
+  // Variable declaration keywords & Modulo
+  'LET': TokenType.KW_LET,
+  'VAR': TokenType.KW_LET,
+  'PROM': TokenType.KW_LET,
+  'PROMENNA': TokenType.KW_LET,
+  'MOD': TokenType.PERCENT,
 
   // Conditions
   'ZED': TokenType.COND_WALL,
@@ -314,9 +336,70 @@ export class Lexer {
         tokens.push(new Token(TokenType.COLON, ':', startLine, startCol));
         continue;
       }
+      // Operators & delimiters
+      if (ch === '+') {
+        this.advance();
+        tokens.push(new Token(TokenType.PLUS, '+', startLine, startCol));
+        continue;
+      }
+      if (ch === '-') {
+        this.advance();
+        tokens.push(new Token(TokenType.MINUS, '-', startLine, startCol));
+        continue;
+      }
+      if (ch === '*') {
+        this.advance();
+        tokens.push(new Token(TokenType.STAR, '*', startLine, startCol));
+        continue;
+      }
+      if (ch === '/') {
+        this.advance();
+        tokens.push(new Token(TokenType.SLASH, '/', startLine, startCol));
+        continue;
+      }
+      if (ch === '%') {
+        this.advance();
+        tokens.push(new Token(TokenType.PERCENT, '%', startLine, startCol));
+        continue;
+      }
+      if (ch === '=') {
+        this.advance();
+        if (this.peek() === '=') {
+          this.advance();
+          tokens.push(new Token(TokenType.EQ, '==', startLine, startCol));
+        } else {
+          tokens.push(new Token(TokenType.ASSIGN, '=', startLine, startCol));
+        }
+        continue;
+      }
       if (ch === '!') {
         this.advance();
-        tokens.push(new Token(TokenType.KW_NOT, '!', startLine, startCol));
+        if (this.peek() === '=') {
+          this.advance();
+          tokens.push(new Token(TokenType.NEQ, '!=', startLine, startCol));
+        } else {
+          tokens.push(new Token(TokenType.KW_NOT, '!', startLine, startCol));
+        }
+        continue;
+      }
+      if (ch === '<') {
+        this.advance();
+        if (this.peek() === '=') {
+          this.advance();
+          tokens.push(new Token(TokenType.LTE, '<=', startLine, startCol));
+        } else {
+          tokens.push(new Token(TokenType.LT, '<', startLine, startCol));
+        }
+        continue;
+      }
+      if (ch === '>') {
+        this.advance();
+        if (this.peek() === '=') {
+          this.advance();
+          tokens.push(new Token(TokenType.GTE, '>=', startLine, startCol));
+        } else {
+          tokens.push(new Token(TokenType.GT, '>', startLine, startCol));
+        }
         continue;
       }
 

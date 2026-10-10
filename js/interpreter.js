@@ -26,6 +26,7 @@ export class Interpreter {
     // Safety thresholds
     this.maxCallDepth = 500;
     this.maxOperations = 100000;
+    this.variables = new Map();
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
@@ -38,6 +39,7 @@ export class Interpreter {
       error: [],
       log: [],
       finish: [],
+      variableChange: [],
     };
   }
 
@@ -72,6 +74,7 @@ export class Interpreter {
     this.stop();
     this.program = programNode;
     this.generator = null;
+    this.variables.clear();
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
@@ -119,6 +122,10 @@ export class Interpreter {
           yield* this.runIf(stmt, procedures);
           break;
 
+        case 'Assign':
+          yield* this.runAssign(stmt);
+          break;
+
         case 'Call':
           yield* this.runCall(stmt, procedures);
           break;
@@ -127,6 +134,80 @@ export class Interpreter {
           throw new Error(`Neznámý typ uzlu AST / Unknown AST node type: ${stmt.type}`);
       }
     }
+  }
+
+  evalExpr(node) {
+    if (!node) return 0;
+    if (typeof node === 'number') return node;
+
+    switch (node.type) {
+      case 'NumberLiteral':
+        return node.value;
+
+      case 'Variable': {
+        const key = canonicalize(node.name);
+        if (!this.variables.has(key)) {
+          throw new Error(
+            `Nedefinovaná proměnná '${node.name}' / Undefined variable '${node.name}' (řádek ${node.loc.line})`
+          );
+        }
+        return this.variables.get(key);
+      }
+
+      case 'BinaryOp': {
+        const left = this.evalExpr(node.left);
+        const right = this.evalExpr(node.right);
+        switch (node.op) {
+          case '+': return left + right;
+          case '-': return left - right;
+          case '*': return left * right;
+          case '/':
+            if (right === 0) throw new Error(`Dělení nulou / Division by zero (řádek ${node.loc.line})`);
+            return Math.floor(left / right);
+          case '%':
+            if (right === 0) throw new Error(`Modulo nulou / Modulo by zero (řádek ${node.loc.line})`);
+            return ((left % right) + right) % right;
+          case '==': return left === right ? 1 : 0;
+          case '!=': return left !== right ? 1 : 0;
+          case '<': return left < right ? 1 : 0;
+          case '<=': return left <= right ? 1 : 0;
+          case '>': return left > right ? 1 : 0;
+          case '>=': return left >= right ? 1 : 0;
+          default:
+            throw new Error(`Neznámý operátor / Unknown operator '${node.op}'`);
+        }
+      }
+
+      case 'UnaryOp': {
+        const val = this.evalExpr(node.operand);
+        if (node.op === '-') return -val;
+        if (node.op === '!' || node.op === 'NOT') return val ? 0 : 1;
+        return val;
+      }
+
+      default:
+        throw new Error(`Neznámý typ výrazu / Unknown expression type: ${node.type}`);
+    }
+  }
+
+  evalCondition(condition) {
+    if (condition.type === 'ExprCondition') {
+      return Boolean(this.evalExpr(condition.expr));
+    }
+    return this.world.evalCondition(condition.test, condition.inverted);
+  }
+
+  *runAssign(stmt) {
+    const val = this.evalExpr(stmt.expr);
+    const key = canonicalize(stmt.name);
+    this.variables.set(key, val);
+    this.emit('variableChange', stmt.name, val);
+    yield {
+      type: 'ASSIGN',
+      name: stmt.name,
+      value: val,
+      loc: stmt.loc,
+    };
   }
 
   *runCommand(stmt, procedures) {
@@ -185,7 +266,7 @@ export class Interpreter {
   }
 
   *runRepeat(stmt, procedures) {
-    const times = stmt.count;
+    const times = typeof stmt.count === 'number' ? stmt.count : this.evalExpr(stmt.count);
     for (let i = 0; i < times; i++) {
       yield* this.runStatements(stmt.body, procedures);
     }
@@ -201,7 +282,7 @@ export class Interpreter {
       }
 
       // Check condition
-      const condVal = this.world.evalCondition(stmt.condition.test, stmt.condition.inverted);
+      const condVal = this.evalCondition(stmt.condition);
       yield {
         type: 'CONDITION_EVAL',
         result: condVal,
@@ -215,7 +296,7 @@ export class Interpreter {
   }
 
   *runIf(stmt, procedures) {
-    const condVal = this.world.evalCondition(stmt.condition.test, stmt.condition.inverted);
+    const condVal = this.evalCondition(stmt.condition);
     yield {
       type: 'CONDITION_EVAL',
       result: condVal,
@@ -343,6 +424,7 @@ export class Interpreter {
   stop() {
     this.stopTimer();
     this.generator = null;
+    this.variables.clear();
     this.emit('highlightLine', null);
     this.setState(InterpreterState.IDLE);
   }
