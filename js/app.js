@@ -61,6 +61,12 @@ class KarelApp {
       consoleOutput: document.getElementById('console-output'),
       clearConsoleBtn: document.getElementById('clear-console-btn'),
 
+      // Left pane tabs and views
+      tabEditor: document.getElementById('tab-editor'),
+      tabGuide: document.getElementById('tab-guide'),
+      editorView: document.getElementById('editor-view'),
+      guideView: document.getElementById('guide-view'),
+
       // Manual buttons
       mStep: document.getElementById('m-step'),
       mLeft: document.getElementById('m-left'),
@@ -113,6 +119,25 @@ class KarelApp {
         dirEast: 'VÝCHOD',
         dirSouth: 'JIH',
         dirWest: 'ZÁPAD',
+        tabEditor: 'Editor',
+        tabGuide: 'Příručka & Struktura kódu',
+        insertTitle: 'Vložit vzor:',
+        insertSample: 'Vložit do editoru',
+        guideIntroTitle: '1. Jak funguje Robot Karel',
+        guideIntroP1: 'Karel je robot, který žije ve čtvercovém světě ulic a tříd. Vykonává příkazy přesně tak, jak jste je napsali shora dolů.',
+        guideIntroP2: 'Základní příkazy: KROK (pohyb o 1 pole), VLEVO-BOK (otočení o 90° vlevo), POLOZ (položení značky z kapsy) a ZVEDNI (sebrání značky do kapsy).',
+        guideStructTitle: '2. Struktura programu (Pravidla syntaxe)',
+        guideStructP1: 'Každý příkaz se píše na samostatný řádek. Řádky začínající // jsou komentáře, které Karel ignoruje.',
+        guideStructP2: 'Všechny složené konstrukce (cyklus OPAKUJ, cyklus DOKUD, podmínka KDYZ a procedura PRIKAZ) musí vždy končit slovem KONEC.',
+        guideRepeatTitle: '3. Cyklus s pevným počtem opakování (OPAKUJ)',
+        guideRepeatP1: 'Pokud chcete sekvenci příkazů zopakovat několikrát (např. 4×):',
+        guideWhileTitle: '4. Podmíněný cyklus (DOKUD)',
+        guideWhileP1: 'Opakuje příkazy tak dlouho, dokud platí daná podmínka (např. dokud před Karlem není zeď):',
+        guideIfTitle: '5. Podmínky a rozhodování (KDYŽ / JINAK)',
+        guideIfP1: 'Umožňuje Karlovi rozhodnout se na základě toho, co vidí pod sebou nebo před sebou:',
+        guideProcTitle: '6. Vlastní příkazy (Procedury)',
+        guideProcP1: 'Naučte Karla nový povel! Definice začíná slovem PRIKAZ <nazev> a končí KONEC:',
+        guideSensorsTitle: '7. Dostupné podmínky a senzory',
       },
       en: {
         cheatsheet: 'Cheatsheet',
@@ -142,8 +167,115 @@ class KarelApp {
         dirEast: 'EAST',
         dirSouth: 'SOUTH',
         dirWest: 'WEST',
+        tabEditor: 'Editor',
+        tabGuide: 'Guide & Code Structure',
+        insertTitle: 'Insert Template:',
+        insertSample: 'Insert into editor',
+        guideIntroTitle: '1. How Karel the Robot Works',
+        guideIntroP1: 'Karel is a robot living in a grid world of streets and avenues. Karel executes commands sequentially from top to bottom.',
+        guideIntroP2: 'Primitive commands: STEP (move forward 1 corner), TURN_LEFT (rotate 90° counter-clockwise), PUT (place a beeper from bag), and PICK (pick up a beeper into bag).',
+        guideStructTitle: '2. Program Structure (Syntax Rules)',
+        guideStructP1: 'Commands are written on separate lines. Lines beginning with // are comments that Karel ignores.',
+        guideStructP2: 'All compound statements (REPEAT, WHILE, IF, and DEFINE) must always end with the keyword END.',
+        guideRepeatTitle: '3. Fixed Repeat Loop (REPEAT)',
+        guideRepeatP1: 'When you want to repeat a sequence of commands a specific number of times (e.g. 4 times):',
+        guideWhileTitle: '4. Conditional Loop (WHILE)',
+        guideWhileP1: 'Repeats commands as long as the condition evaluates to true (e.g. while front is clear):',
+        guideIfTitle: '5. Branching & Conditions (IF / ELSE)',
+        guideIfP1: 'Allows Karel to make decisions based on what is in front or beneath:',
+        guideProcTitle: '6. Custom Procedures (DEFINE)',
+        guideProcP1: 'Teach Karel a new command! Begins with DEFINE <name> and ends with END:',
+        guideSensorsTitle: '7. Available Conditions & Sensors',
       },
     };
+  }
+
+  switchTab(tab) {
+    if (tab === 'editor') {
+      this.dom.tabEditor.classList.add('active');
+      this.dom.tabGuide.classList.remove('active');
+      this.dom.editorView.style.display = 'flex';
+      this.dom.guideView.classList.remove('active');
+    } else {
+      this.dom.tabGuide.classList.add('active');
+      this.dom.tabEditor.classList.remove('active');
+      this.dom.editorView.style.display = 'none';
+      this.dom.guideView.classList.add('active');
+    }
+  }
+
+  insertSnippet(key) {
+    const isCs = this.lang === 'cs';
+    let snippet = '';
+    switch (key) {
+      case 'step': snippet = isCs ? 'KROK\n' : 'STEP\n'; break;
+      case 'left': snippet = isCs ? 'VLEVO-BOK\n' : 'TURN_LEFT\n'; break;
+      case 'right': snippet = isCs ? 'VPRAVO-BOK\n' : 'TURN_RIGHT\n'; break;
+      case 'put': snippet = isCs ? 'POLOZ\n' : 'PUT\n'; break;
+      case 'pick': snippet = isCs ? 'ZVEDNI\n' : 'PICK\n'; break;
+      case 'repeat':
+        snippet = isCs
+          ? 'OPAKUJ 4 KRAT\n  KROK\nKONEC\n'
+          : 'REPEAT 4 TIMES\n  STEP\nEND\n';
+        break;
+      case 'while':
+        snippet = isCs
+          ? 'DOKUD NENI ZED\n  KROK\nKONEC\n'
+          : 'WHILE FRONT_IS_CLEAR\n  STEP\nEND\n';
+        break;
+      case 'if':
+        snippet = isCs
+          ? 'KDYZ JE CIP\n  ZVEDNI\nJINAK\n  POLOZ\nKONEC\n'
+          : 'IF BEEPER\n  PICK\nELSE\n  PUT\nEND\n';
+        break;
+      case 'proc':
+        snippet = isCs
+          ? 'PRIKAZ MOJE-PROCEDURA\n  KROK\nKONEC\n'
+          : 'DEFINE MY_PROCEDURE\n  STEP\nEND\n';
+        break;
+    }
+
+    this.switchTab('editor');
+    const editor = this.dom.codeEditor;
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const val = editor.value;
+    editor.value = val.substring(0, start) + snippet + val.substring(end);
+    editor.selectionStart = editor.selectionEnd = start + snippet.length;
+    editor.focus();
+    this.updateLineNumbers();
+  }
+
+  insertGuideSample(key) {
+    const isCs = this.lang === 'cs';
+    let sample = '';
+    switch (key) {
+      case 'repeat':
+        sample = isCs
+          ? '// Obejdi čtverec a v každém rohu polož značku:\nOPAKUJ 4 KRAT\n  KROK\n  POLOZ\n  VLEVO-BOK\nKONEC\n'
+          : '// Patrol square and place a beeper at each corner:\nREPEAT 4 TIMES\n  STEP\n  PUT\n  TURN_LEFT\nEND\n';
+        break;
+      case 'while':
+        sample = isCs
+          ? '// Jdi dopředu až ke zdi:\nDOKUD NENI ZED\n  KROK\nKONEC\n'
+          : '// Walk forward until the wall:\nWHILE FRONT_IS_CLEAR\n  STEP\nEND\n';
+        break;
+      case 'if':
+        sample = isCs
+          ? '// Pokud je pod Karlem značka, seber ji, jinak polož novou:\nKDYZ JE CIP\n  ZVEDNI\nJINAK\n  POLOZ\nKONEC\n'
+          : '// If beeper is present, pick it up, otherwise put one:\nIF BEEPER\n  PICK\nELSE\n  PUT\nEND\n';
+        break;
+      case 'proc':
+        sample = isCs
+          ? 'PRIKAZ VPRAVO-BOK\n  OPAKUJ 3 KRAT\n    VLEVO-BOK\n  KONEC\nKONEC\n\n// Použití:\nKROK\nVPRAVO-BOK\nKROK\n'
+          : 'DEFINE TURN_RIGHT\n  REPEAT 3 TIMES\n    TURN_LEFT\n  END\nEND\n\n// Usage:\nSTEP\nTURN_RIGHT\nSTEP\n';
+        break;
+    }
+
+    this.switchTab('editor');
+    this.dom.codeEditor.value = sample;
+    this.updateLineNumbers();
+    this.log('Vložen vzorový kód do editoru / Inserted sample into editor', 'info');
   }
 
   applyLanguage() {
@@ -176,6 +308,26 @@ class KarelApp {
       this.dom.mPick.textContent = 'PICK';
     }
 
+    // Update snippet button labels
+    document.querySelectorAll('.btn-snippet').forEach((btn) => {
+      const ins = btn.getAttribute('data-insert');
+      if (this.lang === 'cs') {
+        const labels = {
+          step: '+ KROK', left: '+ VLEVO', right: '+ VPRAVO',
+          put: '+ POLOŽ', pick: '+ ZVEDNI', repeat: '+ OPAKUJ',
+          while: '+ DOKUD', if: '+ KDYŽ', proc: '+ PŘÍKAZ'
+        };
+        if (labels[ins]) btn.textContent = labels[ins];
+      } else {
+        const labels = {
+          step: '+ STEP', left: '+ LEFT', right: '+ RIGHT',
+          put: '+ PUT', pick: '+ PICK', repeat: '+ REPEAT',
+          while: '+ WHILE', if: '+ IF', proc: '+ DEFINE'
+        };
+        if (labels[ins]) btn.textContent = labels[ins];
+      }
+    });
+
     // Refresh example names in dropdown
     const selectedId = this.dom.exampleSelect.value;
     this.initExamples();
@@ -205,6 +357,7 @@ class KarelApp {
     this.world.saveInitialSnapshot();
     this.dom.worldW.value = this.world.width;
     this.dom.worldH.value = this.world.height;
+    this.dom.exampleSelect.value = ex.id;
 
     // Load code
     this.dom.codeEditor.value = ex.code[this.lang] || ex.code.cs;
@@ -217,6 +370,26 @@ class KarelApp {
   }
 
   initEvents() {
+    // Tabs switching
+    this.dom.tabEditor.addEventListener('click', () => this.switchTab('editor'));
+    this.dom.tabGuide.addEventListener('click', () => this.switchTab('guide'));
+
+    // Snippet buttons insertion
+    document.querySelectorAll('.btn-snippet').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const ins = btn.getAttribute('data-insert');
+        if (ins) this.insertSnippet(ins);
+      });
+    });
+
+    // Sample buttons in guide
+    document.querySelectorAll('.btn-insert-sample').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sample = btn.getAttribute('data-sample');
+        if (sample) this.insertGuideSample(sample);
+      });
+    });
+
     // Language change
     this.dom.langSelect.addEventListener('change', (e) => {
       this.lang = e.target.value;

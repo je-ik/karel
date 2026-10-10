@@ -41,35 +41,170 @@
   <!-- Workspace: Split Panes -->
   <main class="app-workspace">
 
-    <!-- Left Pane: Code Editor & Execution -->
+    <!-- Left Pane: Code Editor, Guide & Execution -->
     <section class="editor-pane">
-      <!-- Editor Toolbar -->
-      <div class="pane-toolbar">
-        <div class="toolbar-group">
-          <label for="example-select" class="toolbar-label" data-i18n="exampleLabel">Příklad:</label>
-          <select id="example-select">
-            <option value="" disabled selected data-i18n="selectExample">Vyberte úlohu...</option>
-          </select>
+
+      <!-- Left Pane Tabs -->
+      <div class="pane-tabs">
+        <button id="tab-editor" class="pane-tab active">
+          💻 <span data-i18n="tabEditor">Editor</span>
+        </button>
+        <button id="tab-guide" class="pane-tab">
+          📖 <span data-i18n="tabGuide">Příručka & Struktura kódu</span>
+        </button>
+      </div>
+
+      <!-- Editor View Wrapper -->
+      <div id="editor-view" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <!-- Editor Toolbar -->
+        <div class="pane-toolbar">
+          <div class="toolbar-group">
+            <label for="example-select" class="toolbar-label" data-i18n="exampleLabel">Příklad:</label>
+            <select id="example-select">
+              <option value="" disabled selected data-i18n="selectExample">Vyberte úlohu...</option>
+            </select>
+          </div>
+
+          <div class="toolbar-group">
+            <button id="new-code-btn" class="btn" title="Nový prázdný program / Clear editor">
+              📄 <span data-i18n="newBtn">Nový</span>
+            </button>
+          </div>
         </div>
 
-        <div class="toolbar-group">
-          <button id="new-code-btn" class="btn" title="Nový prázdný program / Clear editor">
-            📄 <span data-i18n="newBtn">Nový</span>
-          </button>
+        <!-- Snippet Quick Insertion Bar -->
+        <div class="snippet-bar">
+          <span class="snippet-title" data-i18n="insertTitle">Vložit:</span>
+          <button type="button" class="btn btn-snippet" data-insert="step" title="Vložit KROK">+ KROK</button>
+          <button type="button" class="btn btn-snippet" data-insert="left" title="Vložit VLEVO-BOK">+ VLEVO</button>
+          <button type="button" class="btn btn-snippet" data-insert="right" title="Vložit VPRAVO-BOK">+ VPRAVO</button>
+          <button type="button" class="btn btn-snippet" data-insert="put" title="Vložit POLOŽ">+ POLOŽ</button>
+          <button type="button" class="btn btn-snippet" data-insert="pick" title="Vložit ZVEDNI">+ ZVEDNI</button>
+          <button type="button" class="btn btn-snippet" data-insert="repeat" title="Vložit cyklus OPAKUJ">+ OPAKUJ</button>
+          <button type="button" class="btn btn-snippet" data-insert="while" title="Vložit cyklus DOKUD">+ DOKUD</button>
+          <button type="button" class="btn btn-snippet" data-insert="if" title="Vložit podmínku KDYŽ">+ KDYŽ</button>
+          <button type="button" class="btn btn-snippet" data-insert="proc" title="Vložit definici PŘÍKAZ">+ PŘÍKAZ</button>
+        </div>
+
+        <!-- Code Editor Area -->
+        <div class="editor-container">
+          <div id="line-numbers" class="line-numbers">1</div>
+          <div class="editor-wrapper">
+            <div id="active-line-marker" class="active-line-marker"></div>
+            <textarea
+              id="code-editor"
+              class="code-editor"
+              spellcheck="false"
+              placeholder="// Zde napište program pro Karla..."
+            ></textarea>
+          </div>
         </div>
       </div>
 
-      <!-- Code Editor Area -->
-      <div class="editor-container">
-        <div id="line-numbers" class="line-numbers">1</div>
-        <div class="editor-wrapper">
-          <div id="active-line-marker" class="active-line-marker"></div>
-          <textarea
-            id="code-editor"
-            class="code-editor"
-            spellcheck="false"
-            placeholder="// Zde napište program pro Karla..."
-          ></textarea>
+      <!-- In-Pane Guide & Code Structure View -->
+      <div id="guide-view" class="guide-container">
+        <!-- Section 1: Jak funguje Karel -->
+        <div class="guide-section">
+          <h3>🤖 <span data-i18n="guideIntroTitle">1. Jak funguje Robot Karel</span></h3>
+          <p data-i18n="guideIntroP1">
+            Karel je robot, který žije ve čtvercovém světě ulic a tříd. Vykonává příkazy přesně tak, jak jste je napsali shora dolů.
+          </p>
+          <p data-i18n="guideIntroP2">
+            Základní příkazy: <code>KROK</code> (pohyb o 1 pole), <code>VLEVO-BOK</code> (otočení o 90° vlevo), <code>POLOZ</code> (položení značky z kapsy) a <code>ZVEDNI</code> (sebrání značky do kapsy).
+          </p>
+        </div>
+
+        <!-- Section 2: Struktura programu -->
+        <div class="guide-section">
+          <h3>📐 <span data-i18n="guideStructTitle">2. Struktura programu (Pravidla syntaxe)</span></h3>
+          <p data-i18n="guideStructP1">
+            Každý příkaz se píše na samostatný řádek. Řádky začínající <code>//</code> jsou komentáře, které Karel ignoruje.
+          </p>
+          <p data-i18n="guideStructP2">
+            Všechny složené konstrukce (cyklus <code>OPAKUJ</code>, cyklus <code>DOKUD</code>, podmínka <code>KDYZ</code> a procedura <code>PRIKAZ</code>) <strong>musí vždy končit slovem <code>KONEC</code></strong> (v angličtině <code>END</code>).
+          </p>
+        </div>
+
+        <!-- Section 3: Cyklus OPAKUJ -->
+        <div class="guide-section">
+          <h3>🔁 <span data-i18n="guideRepeatTitle">3. Cyklus s pevným počtem opakování (OPAKUJ)</span></h3>
+          <p data-i18n="guideRepeatP1">
+            Pokud chcete nějakou sekvenci příkazů zopakovat několikrát (např. 4×):
+          </p>
+          <div class="guide-code-box">
+<button class="btn btn-insert-sample" data-sample="repeat" data-i18n="insertSample">Vložit do editoru</button>
+// Obejdi čtverec a v každém rohu polož značku:
+OPAKUJ 4 KRAT
+  KROK
+  POLOZ
+  VLEVO-BOK
+KONEC
+          </div>
+        </div>
+
+        <!-- Section 4: Cyklus DOKUD -->
+        <div class="guide-section">
+          <h3>🔄 <span data-i18n="guideWhileTitle">4. Podmíněný cyklus (DOKUD)</span></h3>
+          <p data-i18n="guideWhileP1">
+            Opakuje příkazy tak dlouho, dokud platí daná podmínka (např. dokud před Karlem není zeď):
+          </p>
+          <div class="guide-code-box">
+<button class="btn btn-insert-sample" data-sample="while" data-i18n="insertSample">Vložit do editoru</button>
+// Jdi dopředu až ke zdi:
+DOKUD NENI ZED
+  KROK
+KONEC
+          </div>
+        </div>
+
+        <!-- Section 5: Podmínka KDYŽ -->
+        <div class="guide-section">
+          <h3>❓ <span data-i18n="guideIfTitle">5. Podmínky a rozhodování (KDYŽ / JINAK)</span></h3>
+          <p data-i18n="guideIfP1">
+            Umožňuje Karlovi rozhodnout se na základě toho, co vidí pod sebou nebo před sebou:
+          </p>
+          <div class="guide-code-box">
+<button class="btn btn-insert-sample" data-sample="if" data-i18n="insertSample">Vložit do editoru</button>
+// Pokud je pod Karlem značka, seber ji, jinak polož novou:
+KDYZ JE CIP
+  ZVEDNI
+JINAK
+  POLOZ
+KONEC
+          </div>
+        </div>
+
+        <!-- Section 6: Vlastní příkazy -->
+        <div class="guide-section">
+          <h3>⭐ <span data-i18n="guideProcTitle">6. Vlastní příkazy (Procedury)</span></h3>
+          <p data-i18n="guideProcP1">
+            Naučte Karla nový povel! Definice začíná slovem <code>PRIKAZ &lt;nazev&gt;</code> a končí <code>KONEC</code>:
+          </p>
+          <div class="guide-code-box">
+<button class="btn btn-insert-sample" data-sample="proc" data-i18n="insertSample">Vložit do editoru</button>
+PRIKAZ VPRAVO-BOK
+  OPAKUJ 3 KRAT
+    VLEVO-BOK
+  KONEC
+KONEC
+
+// Nyní můžete příkaz použít kdekoli v programu:
+KROK
+VPRAVO-BOK
+KROK
+          </div>
+        </div>
+
+        <!-- Section 7: Přehled senzorů -->
+        <div class="guide-section">
+          <h3>🧭 <span data-i18n="guideSensorsTitle">7. Dostupné podmínky a senzory</span></h3>
+          <ul style="padding-left: 1.25rem; font-size: 0.86rem; color: #cbd5e1; line-height: 1.7;">
+            <li><code>[JE / NENI] ZED</code> – je přímo před Karlem zeď nebo okraj světa? (EN: <code>WALL_AHEAD</code>)</li>
+            <li><code>[JE / NENI] VOLNO</code> – je cesta před Karlem volná? (EN: <code>FRONT_IS_CLEAR</code>)</li>
+            <li><code>[JE / NENI] CIP</code> – je na políčku pod Karlem značka? (EN: <code>BEEPER</code>)</li>
+            <li><code>[MA / NENI] KAPSA</code> – má Karel v kapse ještě značku? (EN: <code>BEEPER_IN_BAG</code>)</li>
+            <li><code>[JE] SEVER / JIH / VYCHOD / ZAPAD</code> – směr otočení Karla. (EN: <code>FACING_NORTH / SOUTH / EAST / WEST</code>)</li>
+          </ul>
         </div>
       </div>
 
@@ -277,6 +412,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js"></script>
+  <!-- Main standalone script (works with both file:// and http://) -->
+  <script src="js/bundle.js"></script>
 </body>
 </html>

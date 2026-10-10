@@ -20,31 +20,45 @@ export const Examples = [
       beepers: [],
     },
     code: {
-      cs: `// První kroky s Karlem
-// Položíme 3 značky za sebou a otočíme se nahoru
+      cs: `// ==========================================
+// VÍTEJTE V JAZYCE ROBOT KAREL!
+// ------------------------------------------
+// Tento program ukazuje základní strukturu kódu:
+// 1. Karel provádí příkazy popořadě shora dolů.
+// 2. Položí 3 značky v řadě, otočí se a položí další.
+//
+// Stiskněte tlačítko [▶ Spustit] nebo [⏭ Krok].
+// ==========================================
 
-KROK
-POLOZ
+KROK          // Popojít o jedno pole vpřed
+POLOZ         // Položit značku z kapsy
 KROK
 POLOZ
 KROK
 POLOZ
 
-VLEVO-BOK
+VLEVO-BOK     // Otočit se o 90 stupňů doleva (na Sever)
 KROK
 POLOZ
 `,
-      en: `// First steps with Karel
-// Place 3 beepers in a line and turn up
+      en: `// ==========================================
+// WELCOME TO KAREL THE ROBOT!
+// ------------------------------------------
+// This program demonstrates basic code structure:
+// 1. Karel executes commands in sequence top to bottom.
+// 2. Places 3 beepers in a row, turns North, and puts one more.
+//
+// Click [▶ Run] or [⏭ Step] to execute.
+// ==========================================
 
-STEP
-PUT
+STEP          // Move forward one corner
+PUT           // Put a beeper from the bag
 STEP
 PUT
 STEP
 PUT
 
-TURN_LEFT
+TURN_LEFT     // Turn 90 degrees counter-clockwise (North)
 STEP
 PUT
 `,
@@ -52,8 +66,112 @@ PUT
   },
 
   {
+    id: 'code_structure_tutorial',
+    title: { cs: '2. Jak strukturovat program (Vzor)', en: '2. Code Structure Tutorial' },
+    desc: {
+      cs: 'Kompletní ukázka struktury: vlastní příkazy, cyklus OPAKUJ, cyklus DOKUD a podmínka KDYŽ.',
+      en: 'Complete structural demonstration: custom procedures, REPEAT loops, WHILE loops, and IF conditions.',
+    },
+    world: {
+      width: 10,
+      height: 8,
+      karel: { x: 1, y: 1, dir: 'EAST', bag: Infinity },
+      verticalWalls: [],
+      horizontalWalls: [],
+      beepers: [
+        ['3,1', 1],
+        ['5,1', 2],
+      ],
+    },
+    code: {
+      cs: `// ==========================================
+// PŘÍRUČKA STRUKTURY KÓDU V ROBOTU KARLOVI
+// ==========================================
+
+// 1. DEFINICE VLASTNÍHO PŘÍKAZU (PROCEDURY)
+// Každá definice začíná slovem PRIKAZ a končí KONEC.
+PRIKAZ OBRAT-SE
+  VLEVO-BOK
+  VLEVO-BOK
+KONEC
+
+PRIKAZ VPRAVO-BOK
+  OPAKUJ 3 KRAT
+    VLEVO-BOK
+  KONEC
+KONEC
+
+// 2. HLAVNÍ TĚLO PROGRAMU
+// Příkazy se vykonávají shora dolů.
+
+// Cyklus s pevným počtem opakování (OPAKUJ n KRAT ... KONEC):
+OPAKUJ 2 KRAT
+  KROK
+  POLOZ
+KONEC
+
+// Podmíněný cyklus (DOKUD ... KONEC):
+// Běží tak dlouho, dokud podmínka platí.
+DOKUD NENI ZED
+  // Podmínka s větvením (KDYZ ... JINAK ... KONEC):
+  KDYZ JE CIP
+    ZVEDNI       // Pokud je pod Karlem značka, zvedni ji
+  JINAK
+    POLOZ        // Jinak polož novou značku
+  KONEC
+  KROK
+KONEC
+
+// Použití našeho nového vlastního příkazu:
+OBRAT-SE
+`,
+      en: `// ==========================================
+// CODE STRUCTURE TUTORIAL IN KAREL
+// ==========================================
+
+// 1. DEFINING A CUSTOM PROCEDURE
+// Every procedure begins with DEFINE and finishes with END.
+DEFINE TURN_AROUND
+  TURN_LEFT
+  TURN_LEFT
+END
+
+DEFINE TURN_RIGHT
+  REPEAT 3 TIMES
+    TURN_LEFT
+  END
+END
+
+// 2. MAIN PROGRAM BODY
+// Commands are executed sequentially from top to bottom.
+
+// Repeat loop (REPEAT n TIMES ... END):
+REPEAT 2 TIMES
+  STEP
+  PUT
+END
+
+// Conditional loop (WHILE ... END):
+// Runs as long as the condition evaluates to true.
+WHILE FRONT_IS_CLEAR
+  // Branching conditional (IF ... ELSE ... END):
+  IF BEEPER
+    PICK         // If beeper is present, pick it up
+  ELSE
+    PUT          // Otherwise place a new beeper
+  END
+  STEP
+END
+
+// Invoking our custom defined procedure:
+TURN_AROUND
+`,
+    },
+  },
+
+  {
     id: 'square_patrol',
-    title: { cs: '2. Obchůzka čtverce (Procedury & Cykly)', en: '2. Square Patrol (Procedures & Loops)' },
+    title: { cs: '3. Obchůzka čtverce (Procedury & Cykly)', en: '3. Square Patrol (Procedures & Loops)' },
     desc: {
       cs: 'Definice vlastního příkazu VPRAVO-BOK a cyklus OPAKUJ.',
       en: 'Defining a custom TURN_RIGHT command and REPEAT loop.',
@@ -104,7 +222,7 @@ END
 
   {
     id: 'harvest_row',
-    title: { cs: '3. Sklizeň řádku (Podmínky a DOKUD)', en: '3. Harvest Row (While & Conditions)' },
+    title: { cs: '4. Sklizeň řádku (Podmínky a DOKUD)', en: '4. Harvest Row (While & Conditions)' },
     desc: {
       cs: 'Karel projde řadu až ke zdi a posbírá všechny značky, které najde.',
       en: 'Karel walks to the wall and collects all beepers in its path.',
@@ -157,7 +275,7 @@ END
 
   {
     id: 'maze_runner',
-    title: { cs: '4. Únik z bludiště (Pravidlo pravé ruky)', en: '4. Maze Runner (Right-Hand Rule)' },
+    title: { cs: '5. Únik z bludiště (Pravidlo pravé ruky)', en: '5. Maze Runner (Right-Hand Rule)' },
     desc: {
       cs: 'Algoritmus sledování pravé zdi k nalezení cíle označeného značkou.',
       en: 'Right-hand wall following algorithm to reach the target beeper.',
@@ -248,7 +366,7 @@ END
 
   {
     id: 'pyramid_stairs',
-    title: { cs: '5. Stavba schodiště (Pyramida)', en: '5. Staircase Builder (Pyramid)' },
+    title: { cs: '6. Stavba schodiště (Pyramida)', en: '6. Staircase Builder (Pyramid)' },
     desc: {
       cs: 'Karel postaví stupňovité schodiště ze značek.',
       en: 'Karel constructs a step pyramid using beepers.',
@@ -307,7 +425,7 @@ PUT
 
   {
     id: 'letter_k',
-    title: { cs: '6. Nápis písmene "K"', en: '6. Draw Letter "K"' },
+    title: { cs: '7. Nápis písmene "K"', en: '7. Draw Letter "K"' },
     desc: {
       cs: 'Karel vykreslí své začáteční písmeno K ze značek.',
       en: 'Karel draws its initial letter "K" using beepers.',

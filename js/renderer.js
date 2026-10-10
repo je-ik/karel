@@ -388,55 +388,130 @@ export class KarelRenderer {
     const { px, py } = this.worldToPixel(this.anim.curX, this.anim.curY);
     const angle = this.anim.curAngle;
 
-    const rSize = cellSize * 0.72; // robot size
+    const rSize = cellSize * 0.82; // Prominent robot size
     const half = rSize / 2;
 
     ctx.save();
     ctx.translate(px, py);
-    ctx.rotate(angle);
 
-    // Tread Tracks (top & bottom relative to East orientation)
-    ctx.fillStyle = this.colors.robotTread;
-    const treadH = rSize * 0.22;
-    const treadW = rSize * 0.86;
-    ctx.fillRect(-treadW / 2, -half, treadW, treadH);
-    ctx.fillRect(-treadW / 2, half - treadH, treadW, treadH);
-
-    // Robot Main Body
-    const bodyW = rSize * 0.72;
-    const bodyH = rSize * 0.62;
-    ctx.fillStyle = this.colors.robotBody;
-    ctx.strokeStyle = '#1d4ed8';
-    ctx.lineWidth = 2;
-    this.roundRect(ctx, -bodyW / 2, -bodyH / 2, bodyW, bodyH, 4, true, true);
-
-    // Visor / Eyes (facing right / positive X)
-    ctx.fillStyle = '#0f172a';
-    const visorW = bodyW * 0.35;
-    const visorH = bodyH * 0.7;
-    const visorX = bodyW / 2 - visorW - 2;
-    const visorY = -visorH / 2;
-    this.roundRect(ctx, visorX, visorY, visorW, visorH, 3, true, false);
-
-    // Glowing eyes
-    ctx.fillStyle = this.colors.robotEye;
-    const eyeR = Math.max(1.8, visorH * 0.16);
+    // 1. Soft glowing aura on ground beneath Karel
+    const auraGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, cellSize * 0.52);
+    auraGrad.addColorStop(0, 'rgba(14, 165, 233, 0.45)');
+    auraGrad.addColorStop(0.6, 'rgba(59, 130, 246, 0.2)');
+    auraGrad.addColorStop(1, 'rgba(59, 130, 246, 0)');
+    ctx.fillStyle = auraGrad;
     ctx.beginPath();
-    ctx.arc(visorX + visorW / 2, visorY + visorH * 0.3, eyeR, 0, Math.PI * 2);
-    ctx.arc(visorX + visorW / 2, visorY + visorH * 0.7, eyeR, 0, Math.PI * 2);
+    ctx.arc(0, 0, cellSize * 0.52, 0, Math.PI * 2);
     ctx.fill();
 
-    // Antenna on back
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 2;
+    // Rotate context to Karel's facing direction
+    ctx.rotate(angle);
+
+    // 2. Direction Indicator Arrow ahead of the robot
+    const arrowX = half + cellSize * 0.08;
+    ctx.fillStyle = '#f59e0b';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-bodyW / 2, 0);
-    ctx.lineTo(-bodyW / 2 - rSize * 0.16, 0);
+    ctx.moveTo(arrowX + 7, 0);
+    ctx.lineTo(arrowX, -5);
+    ctx.lineTo(arrowX + 2, 0);
+    ctx.lineTo(arrowX, 5);
+    ctx.closePath();
+    ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = this.colors.robotAntenna;
+    // 3. Track Treads (top & bottom)
+    const treadH = rSize * 0.22;
+    const treadW = rSize * 0.84;
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.5;
+    this.roundRect(ctx, -treadW / 2, -half, treadW, treadH, 3, true, true);
+    this.roundRect(ctx, -treadW / 2, half - treadH, treadW, treadH, 3, true, true);
+
+    // Tread cleats/teeth
+    ctx.fillStyle = '#64748b';
+    const numCleats = 4;
+    const cleatW = 3;
+    for (let i = 0; i < numCleats; i++) {
+      const cx = -treadW / 2 + 5 + i * (treadW - 10) / (numCleats - 1);
+      ctx.fillRect(cx - cleatW / 2, -half + 1, cleatW, treadH - 2);
+      ctx.fillRect(cx - cleatW / 2, half - treadH + 1, cleatW, treadH - 2);
+    }
+
+    // 4. Main Robot Body (metallic cyber chassis)
+    const bodyW = rSize * 0.68;
+    const bodyH = rSize * 0.62;
+    const bodyGrad = ctx.createLinearGradient(-bodyW / 2, -bodyH / 2, bodyW / 2, bodyH / 2);
+    bodyGrad.addColorStop(0, '#38bdf8');
+    bodyGrad.addColorStop(1, '#0284c7');
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = '#bae6fd';
+    ctx.lineWidth = 2;
+    this.roundRect(ctx, -bodyW / 2, -bodyH / 2, bodyW, bodyH, 5, true, true);
+
+    // 5. Visor / Eyes (Front face facing positive X)
+    const visorW = bodyW * 0.38;
+    const visorH = bodyH * 0.74;
+    const visorX = bodyW / 2 - visorW - 1;
+    const visorY = -visorH / 2;
+    ctx.fillStyle = '#090d16';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    this.roundRect(ctx, visorX, visorY, visorW, visorH, 4, true, true);
+
+    // Glowing LED eyes
+    const eyeR = Math.max(2.2, visorH * 0.17);
+    const eyeGrad = ctx.createRadialGradient(
+      visorX + visorW * 0.55, visorY + visorH * 0.3, 0.5,
+      visorX + visorW * 0.55, visorY + visorH * 0.3, eyeR * 1.5
+    );
+    eyeGrad.addColorStop(0, '#86efac');
+    eyeGrad.addColorStop(1, '#10b981');
+
+    ctx.fillStyle = eyeGrad;
+    ctx.shadowColor = '#22c55e';
+    ctx.shadowBlur = 4;
     ctx.beginPath();
-    ctx.arc(-bodyW / 2 - rSize * 0.16, 0, Math.max(2, rSize * 0.08), 0, Math.PI * 2);
+    ctx.arc(visorX + visorW * 0.55, visorY + visorH * 0.3, eyeR, 0, Math.PI * 2);
+    ctx.arc(visorX + visorW * 0.55, visorY + visorH * 0.7, eyeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0; // reset shadow
+
+    // 6. Chest Plate / "K" emblem
+    ctx.fillStyle = '#0369a1';
+    ctx.fillRect(-bodyW / 2 + 3, -bodyH * 0.3, bodyW * 0.36, bodyH * 0.6);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${Math.max(9, Math.floor(bodyH * 0.42))}px ui-monospace, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('K', -bodyW / 2 + 3 + (bodyW * 0.36) / 2, 0);
+
+    // 7. Antenna on back with glowing red beacon
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-bodyW / 2, 0);
+    ctx.lineTo(-bodyW / 2 - rSize * 0.18, 0);
+    ctx.stroke();
+
+    const bulbX = -bodyW / 2 - rSize * 0.18;
+    const bulbR = Math.max(2.5, rSize * 0.09);
+
+    // Antenna beacon glow
+    const bulbGrad = ctx.createRadialGradient(bulbX, 0, 1, bulbX, 0, bulbR * 1.8);
+    bulbGrad.addColorStop(0, '#fca5a5');
+    bulbGrad.addColorStop(0.5, '#ef4444');
+    bulbGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+    ctx.fillStyle = bulbGrad;
+    ctx.beginPath();
+    ctx.arc(bulbX, 0, bulbR * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.arc(bulbX, 0, bulbR, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();

@@ -39,4 +39,4 @@ for (const ex of Examples) {
   }
 }
 
-console.log('All 12 simulation runs completed with 100% success!');
+console.log(`All ${Examples.length * 2} simulation runs completed with 100% success!`);
