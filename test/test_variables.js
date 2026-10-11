@@ -127,5 +127,64 @@ console.log('--- Testing Variables & Modulo Parsing & Execution ---');
   assert(world.getBeepers(4, 1) === 0, 'No beeper at (4,1) for i=3');
 }
 
+// 6. Natural language condition: KDYZ JE zbytek 0 and single equals KDYZ zbytek = 0
+{
+  const code = `
+    LET idx 0
+    OPAKUJ 4 KRAT
+      LET zbytek idx MOD 2
+      KDYZ JE zbytek 0
+        POLOZ
+      KONEC
+      KROK
+      LET idx idx + 1
+    KONEC
+  `;
+  const ast = new Parser(new Lexer(code).tokenize()).parse();
+  const world = new KarelWorld(6, 6);
+  const interp = new Interpreter(world);
+  interp.loadProgram(ast);
+
+  while (interp.step()) {}
+
+  assert(world.getBeepers(1, 1) === 1, 'KDYZ JE zbytek 0 placed beeper at (1,1)');
+  assert(world.getBeepers(2, 1) === 0, 'KDYZ JE zbytek 0 skipped beeper at (2,1)');
+  assert(world.getBeepers(3, 1) === 1, 'KDYZ JE zbytek 0 placed beeper at (3,1)');
+  assert(world.getBeepers(4, 1) === 0, 'KDYZ JE zbytek 0 skipped beeper at (4,1)');
+}
+
+// 7. Single '=' comparison: KDYZ zbytek = 0
+{
+  const code = `
+    LET zbytek 0
+    KDYZ zbytek = 0
+      POLOZ
+    KONEC
+  `;
+  const ast = new Parser(new Lexer(code).tokenize()).parse();
+  const world = new KarelWorld(3, 3);
+  const interp = new Interpreter(world);
+  interp.loadProgram(ast);
+  while (interp.step()) {}
+  assert(world.getBeepers(1, 1) === 1, 'Single = in condition KDYZ zbytek = 0 evaluated true');
+}
+
+// 8. Typo detection: OPAKUJ 6 KRATf gives clear error
+{
+  const code = `
+    OPAKUJ 6 KRATf
+      KROK
+    KONEC
+  `;
+  let caught = false;
+  try {
+    new Parser(new Lexer(code).tokenize()).parse();
+  } catch (err) {
+    caught = true;
+    assert(err.message.includes('KRATf') && err.message.includes('KRAT'), `Helpful error on KRATf: ${err.message}`);
+  }
+  assert(caught, 'Parser caught KRATf typo');
+}
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -1158,8 +1158,28 @@ class Parser {
       countExpr = this.parseExpression();
     }
 
-    // Optional KRAT / TIMES
-    this.match(TokenType.KW_TIMES);
+    // Check for typo in KRAT / TIMES (e.g. KRATf)
+    if (!this.isAtEnd()) {
+      const next = this.peek();
+      if (
+        next.line === loc.line &&
+        next.type !== TokenType.LBRACE &&
+        next.type !== TokenType.COLON &&
+        next.type !== TokenType.SEMICOLON
+      ) {
+        if (next.type === TokenType.KW_TIMES) {
+          this.advance();
+        } else if (
+          next.type === TokenType.IDENTIFIER &&
+          (canonicalize(next.value).startsWith('KRAT') ||
+            canonicalize(next.value).startsWith('TIME'))
+        ) {
+          throw new Error(
+            `Neplatné slovo '${next.raw}' na řádku ${next.line}, sloupci ${next.col}. Měli jste na mysli 'KRAT'? / Invalid word '${next.raw}' on line ${next.line}. Did you mean 'KRAT'?`
+          );
+        }
+      }
+    }
 
     // Optional brace or colon
     const hasBrace = this.match(TokenType.LBRACE);
@@ -1177,6 +1197,7 @@ class Parser {
     let expr = this.parseAddition();
     while (
       this.check(TokenType.EQ) ||
+      this.check(TokenType.ASSIGN) ||
       this.check(TokenType.NEQ) ||
       this.check(TokenType.LT) ||
       this.check(TokenType.LTE) ||
@@ -1184,8 +1205,9 @@ class Parser {
       this.check(TokenType.GTE)
     ) {
       const opToken = this.advance();
+      const op = opToken.type === TokenType.ASSIGN ? '==' : opToken.value;
       const right = this.parseAddition();
-      expr = new BinaryOpNode(opToken.value, expr, right, {
+      expr = new BinaryOpNode(op, expr, right, {
         line: opToken.line,
         col: opToken.col,
       });
@@ -1342,6 +1364,55 @@ class Parser {
 
     // Optional 'JE' again (some write 'NENI' without 'JE', or 'NENI ZED')
     this.match(TokenType.KW_IS);
+
+    const SENSOR_TOKENS = new Set([
+      TokenType.COND_WALL,
+      TokenType.COND_CLEAR,
+      TokenType.COND_BEEPER,
+      TokenType.COND_BAG,
+      TokenType.COND_NORTH,
+      TokenType.COND_SOUTH,
+      TokenType.COND_EAST,
+      TokenType.COND_WEST,
+    ]);
+
+    const nextToken = this.peek();
+    if (
+      nextToken &&
+      !SENSOR_TOKENS.has(nextToken.type) &&
+      (nextToken.type === TokenType.IDENTIFIER ||
+        nextToken.type === TokenType.NUMBER ||
+        nextToken.type === TokenType.LPAREN)
+    ) {
+      // Natural language variable comparison following JE / NENI
+      // Examples: "JE zbytek 0", "NENI zbytek 0", "JE zbytek == 0", "JE zbytek = 0"
+      let left = this.parseExpression();
+
+      if (
+        !(left instanceof BinaryOpNode) &&
+        !this.isAtEnd() &&
+        this.peek().line === loc.line &&
+        (this.peek().type === TokenType.IDENTIFIER ||
+          this.peek().type === TokenType.NUMBER ||
+          this.peek().type === TokenType.LPAREN)
+      ) {
+        const right = this.parseExpression();
+        left = new BinaryOpNode(inverted ? '!=' : '==', left, right, loc);
+      } else if (inverted) {
+        if (left instanceof BinaryOpNode) {
+          const invMap = { '==': '!=', '!=': '==', '<': '>=', '<=': '>', '>': '<=', '>=': '<' };
+          if (invMap[left.op]) {
+            left.op = invMap[left.op];
+          } else {
+            left = new UnaryOpNode('!', left, loc);
+          }
+        } else {
+          left = new BinaryOpNode('==', left, new NumberLiteralNode(0, loc), loc);
+        }
+      }
+
+      return new ExprConditionNode(left, loc);
+    }
 
     const condToken = this.advance();
     let test;
