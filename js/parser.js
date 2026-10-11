@@ -159,9 +159,9 @@ export class Parser {
       }
 
       if ((stopMode === 'END' || stopMode === 'ELSE_OR_END') && this.check(TokenType.KW_END)) {
-        this.advance(); // consume END/KONEC
-        // Optional name after END in some classic Karel dialects: KONEC <NAME>
-        if (this.check(TokenType.IDENTIFIER)) {
+        const endToken = this.advance(); // consume END/KONEC
+        // Optional name after END in some classic Karel dialects: KONEC <NAME> (must be on the same line)
+        if (!this.isAtEnd() && this.peek().line === endToken.line && this.check(TokenType.IDENTIFIER)) {
           this.advance();
         }
         return statements;
