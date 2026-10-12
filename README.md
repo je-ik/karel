@@ -1,22 +1,26 @@
 # Robot Karel - Web IDE (Pure JavaScript)
 
-Kompletní webová implementace programovacího jazyka **Robot Karel** v čistém JavaScriptu (bez externích knihoven, funguje offline přímo v prohlížeči).
+Kompletní webová implementace programovacího jazyka **Robot Karel** v čistém JavaScriptu (bez externích knihoven, funguje offline přímo v prohlížeči i online na webu).
 
-Podporuje jak tradiční **českou syntaxi** (`KROK`, `VLEVO-BOK`, `POLOZ`, `ZVEDNI`, `OPAKUJ`, `DOKUD`, `KDYZ`, `PRIKAZ`), tak mezinárodní **anglickou syntaxi** (`STEP`, `TURN_LEFT`, `PUT`, `PICK`, `REPEAT`, `WHILE`, `IF`, `DEFINE`).
+🌐 **Vyzkoušejte online (GitHub Pages):**  
+👉 **[https://je-ik.github.io/karel/](https://je-ik.github.io/karel/)**
+
+Podporuje jak tradiční **českou syntaxi** (`KROK`, `VLEVO-BOK`, `POLOZ`, `ZVEDNI`, `OPAKUJ`, `DOKUD`, `KDYZ`, `PRIKAZ`, `LET`), tak mezinárodní **anglickou syntaxi** (`STEP`, `TURN_LEFT`, `PUT`, `PICK`, `REPEAT`, `WHILE`, `IF`, `DEFINE`, `LET`).
 
 ---
 
 ## 🚀 Jak spustit
 
-Aplikace nevyžaduje žádný build ani instalaci závislostí. Stačí otevřít soubor `index.html` v libovolném moderním webovém prohlížeči (Chrome, Firefox, Safari, Edge):
+### 1. Online v prohlížeči (bez instalace)
+Aplikace je nasazena přes GitHub Pages na: **[https://je-ik.github.io/karel/](https://je-ik.github.io/karel/)**.
+
+### 2. Lokálně z disku
+Aplikace nevyžaduje žádný build ani instalaci závislostí. Stačí otevřít soubor `index.html` v libovolném moderním webovém prohlížeči (Chrome, Firefox, Safari, Edge) poklepáním na soubor nebo spuštěním lokálního serveru:
 
 ```bash
-# Otevření v prohlížeči přímo nebo pomocí libovolného lokálního serveru:
 python3 -m http.server 8000
 # Poté otevřete http://localhost:8000
 ```
-
-Nebo jednoduše poklepejte na `index.html`.
 
 ---
 
