@@ -602,4 +602,110 @@ END
 `,
     },
   },
+
+  {
+    id: 'sine_wave_20x20',
+    title: {
+      cs: '9. Sinusovka na mřížce 20×20 (Funkce, kdeX/kdeY, sin)',
+      en: '9. Sine Wave on 20×20 Grid (Functions, whereX/whereY, sin)',
+    },
+    desc: {
+      cs: 'Karel vykreslí sinusovku v mřížce 20×20 pomocí vlastní funkce, parametrů, souřadnic kdeX/kdeY a goniometrické funkce sin/round.',
+      en: 'Karel plots a sine wave on a 20×20 grid using custom functions, parameters, whereX/whereY coordinates, and sin/round.',
+    },
+    world: {
+      width: 20,
+      height: 20,
+      karel: { x: 1, y: 1, dir: 'EAST', bag: Infinity },
+      verticalWalls: [],
+      horizontalWalls: [],
+      beepers: [],
+    },
+    code: {
+      cs: `// ==========================================
+// SINUSOVKA NA MŘÍŽCE 20×20
+// Demonstrace: FUNKCE, parametry, kdeX/kdeY, sin(), round()
+// ==========================================
+
+PRIKAZ JDI(kroky)
+  OPAKUJ kroky KRAT
+    KROK
+  KONEC
+KONEC
+
+// Funkce spočítá cílovou souřadnici Y pro dané X (1..20)
+FUNKCE CILOVE-Y(x)
+  VRAT 10 + round(8 * sin((x - 1) * PI / 9.5))
+KONEC
+
+// Přesune Karla vertikálně na požadované Y a položí značku
+PRIKAZ VYKRESLI-BOD(cilY)
+  VLEVO-BOK
+  KDYZ cilY > kdeY
+    JDI(cilY - kdeY)
+  JINAK
+    VLEVO-BOK
+    VLEVO-BOK
+    JDI(kdeY - cilY)
+    VLEVO-BOK
+    VLEVO-BOK
+  KONEC
+  POLOZ
+  // Otoč zpět na východ
+  OPAKUJ 3 KRAT
+    VLEVO-BOK
+  KONEC
+KONEC
+
+// Projdeme všech 20 sloupců zleva doprava
+OPAKUJ 19 KRAT
+  VYKRESLI-BOD(CILOVE-Y(kdeX))
+  KROK
+KONEC
+VYKRESLI-BOD(CILOVE-Y(kdeX))
+`,
+      en: `// ==========================================
+// SINE WAVE ON 20×20 GRID
+// Demonstrating: FUNCTION, arguments, whereX/whereY, sin(), round()
+// ==========================================
+
+DEFINE WALK(steps)
+  REPEAT steps TIMES
+    STEP
+  END
+END
+
+// Function computing target Y coordinate for given X (1..20)
+FUNCTION TARGET_Y(x)
+  RETURN 10 + round(8 * sin((x - 1) * PI / 9.5))
+END
+
+// Moves Karel vertically to targetY and places a beeper
+DEFINE PLOT_POINT(targetY)
+  TURN_LEFT
+  IF targetY > whereY
+    WALK(targetY - whereY)
+  ELSE
+    TURN_LEFT
+    TURN_LEFT
+    WALK(whereY - targetY)
+    TURN_LEFT
+    TURN_LEFT
+  END
+  PUT
+  // Face East again
+  REPEAT 3 TIMES
+    TURN_LEFT
+  END
+END
+
+// Traverse all 20 columns from left to right
+REPEAT 19 TIMES
+  PLOT_POINT(TARGET_Y(whereX))
+  STEP
+END
+PLOT_POINT(TARGET_Y(whereX))
+`,
+    },
+  },
 ];

@@ -26,17 +26,34 @@ class ProgramNode extends ASTNode {
 }
 
 class ProcedureDefNode extends ASTNode {
-  constructor(name, body = [], loc) {
+  constructor(name, body = [], loc, params = []) {
     super('ProcedureDef', loc);
     this.name = name;
     this.body = body;
+    this.params = params;
   }
 }
 
 class CallNode extends ASTNode {
-  constructor(name, loc) {
+  constructor(name, loc, args = []) {
     super('Call', loc);
     this.name = name;
+    this.args = args;
+  }
+}
+
+class ReturnNode extends ASTNode {
+  constructor(expr, loc) {
+    super('Return', loc);
+    this.expr = expr;
+  }
+}
+
+class FuncCallNode extends ASTNode {
+  constructor(name, args = [], loc) {
+    super('FuncCall', loc);
+    this.name = name;
+    this.args = args;
   }
 }
 
@@ -162,6 +179,7 @@ const TokenType = {
   KW_ELSE: 'KW_ELSE',
   KW_END: 'KW_END',
   KW_DEFINE: 'KW_DEFINE',
+  KW_RETURN: 'KW_RETURN',
   KW_IS: 'KW_IS',
   KW_NOT: 'KW_NOT',
   KW_LET: 'KW_LET',
@@ -201,6 +219,7 @@ const TokenType = {
   RBRACE: 'RBRACE',
   SEMICOLON: 'SEMICOLON',
   COLON: 'COLON',
+  COMMA: 'COMMA',
 
   EOF: 'EOF',
 };
@@ -283,10 +302,18 @@ const KEYWORD_MAP = {
   'STOP': TokenType.KW_END,
 
   'PRIKAZ': TokenType.KW_DEFINE,
+  'FUNKCE': TokenType.KW_DEFINE,
+  'FCE': TokenType.KW_DEFINE,
   'DEFINE': TokenType.KW_DEFINE,
   'FUNCTION': TokenType.KW_DEFINE,
+  'FUNC': TokenType.KW_DEFINE,
+  'DEF': TokenType.KW_DEFINE,
   'PROCEDURE': TokenType.KW_DEFINE,
   'VOID': TokenType.KW_DEFINE,
+
+  'VRAT': TokenType.KW_RETURN,
+  'RETURN': TokenType.KW_RETURN,
+  'VYSLEDEK': TokenType.KW_RETURN,
 
   'JE': TokenType.KW_IS,
   'IS': TokenType.KW_IS,
@@ -404,17 +431,23 @@ class Lexer {
       const startLine = this.line;
       const startCol = this.col;
 
-      // Numbers (e.g. 5 or 10-krat)
+      // Numbers (e.g. 5, 3.14, or 10-krat)
       if (/[0-9]/.test(ch)) {
         let numStr = '';
         while (this.cursor < this.source.length && /[0-9]/.test(this.peek())) {
           numStr += this.advance();
         }
-        tokens.push(new Token(TokenType.NUMBER, parseInt(numStr, 10), startLine, startCol, numStr));
+        if (this.peek() === '.' && /[0-9]/.test(this.peekNext() || '')) {
+          numStr += this.advance(); // consume '.'
+          while (this.cursor < this.source.length && /[0-9]/.test(this.peek())) {
+            numStr += this.advance();
+          }
+        }
+        tokens.push(new Token(TokenType.NUMBER, parseFloat(numStr), startLine, startCol, numStr));
 
         // In Czech Karel, users often write "5-KRAT" or "5KRAT"
-        if (this.peek() === '-') {
-          this.advance(); // skip dash
+        if (this.peek() === '-' && /[kK]/.test(this.peekNext() || '')) {
+          this.advance(); // skip dash before KRAT
         }
         continue;
       }
@@ -474,6 +507,11 @@ class Lexer {
       if (ch === ':') {
         this.advance();
         tokens.push(new Token(TokenType.COLON, ':', startLine, startCol));
+        continue;
+      }
+      if (ch === ',') {
+        this.advance();
+        tokens.push(new Token(TokenType.COMMA, ',', startLine, startCol));
         continue;
       }
       // Operators & delimiters
@@ -886,6 +924,16 @@ class KarelWorld {
 
 
 
+const UNARY_MATH_FUNCS = new Set([
+  'SIN', 'COS', 'TAN', 'TG', 'ASIN', 'ACOS', 'ATAN', 'ATG',
+  'SIND', 'COSD', 'TAND', 'SINDEG', 'COSDEG', 'TANDEG',
+  'RAD', 'TORAD', 'RADIANS', 'DEG', 'TODEG', 'DEGREES',
+  'ROUND', 'ZAOKROUHLI', 'FLOOR', 'PODLAHA', 'CELACAST',
+  'CEIL', 'CEILING', 'STROP', 'TRUNC', 'INT', 'FRAC',
+  'ABS', 'SQRT', 'ODMOCNINA', 'CBRT', 'EXP', 'LOG', 'LN', 'LOG10', 'LOG2',
+  'SIGN', 'SGN', 'ZNAMENKO',
+]);
+
 class Parser {
   constructor(tokens) {
     this.tokens = tokens || [];
@@ -974,9 +1022,10 @@ class Parser {
   }
 
   /**
-   * Parse procedure definition:
-   * PRIKAZ <NAME> ... KONEC
-   * or DEFINE <NAME>() { ... }
+   * Parse procedure or function definition:
+   * PRIKAZ <NAME>[(a, b) | a b] ... KONEC
+   * FUNKCE <NAME>(a, b) ... VRAT <expr> ... KONEC
+   * or DEFINE <NAME>(a, b) { ... }
    */
   parseProcedure() {
     const defToken = this.advance(); // consume KW_DEFINE
@@ -986,14 +1035,32 @@ class Parser {
       name = this.advance().value;
     } else {
       throw new Error(
-        `Očekáván název příkazu / Expected procedure name (řádek ${token.line}, sloupec ${token.col})`
+        `Očekáván název příkazu nebo funkce / Expected procedure or function name (řádek ${token.line}, sloupec ${token.col})`
       );
     }
     const loc = { line: defToken.line, col: defToken.col };
+    const params = [];
 
-    // Optional ()
+    // Optional parameters: either (a, b) or space-separated on the same header line
     if (this.match(TokenType.LPAREN)) {
+      while (!this.isAtEnd() && !this.check(TokenType.RPAREN)) {
+        const paramToken = this.consume(
+          TokenType.IDENTIFIER,
+          'Očekáván název parametru / Expected parameter name'
+        );
+        params.push(paramToken.value);
+        this.match(TokenType.COMMA);
+      }
       this.consume(TokenType.RPAREN, "Očekávána ')' za parametry / Expected ')'");
+    } else {
+      while (
+        !this.isAtEnd() &&
+        this.peek().line === defToken.line &&
+        this.check(TokenType.IDENTIFIER)
+      ) {
+        params.push(this.advance().value);
+        this.match(TokenType.COMMA);
+      }
     }
 
     // Optional colon or '{'
@@ -1002,7 +1069,7 @@ class Parser {
 
     const body = this.parseStatementBlock(hasBrace ? 'BRACE' : 'END');
 
-    return new ProcedureDefNode(name, body, loc);
+    return new ProcedureDefNode(name, body, loc, params);
   }
 
   /**
@@ -1059,6 +1126,37 @@ class Parser {
     const token = this.peek();
     const loc = { line: token.line, col: token.col };
 
+    // Return statement: VRAT [<expr>] / RETURN [<expr>]
+    if (this.match(TokenType.KW_RETURN)) {
+      this.match(TokenType.ASSIGN);
+      let expr = null;
+      if (
+        !this.isAtEnd() &&
+        this.peek().line === loc.line &&
+        !this.check(TokenType.SEMICOLON) &&
+        !this.check(TokenType.RBRACE) &&
+        !this.check(TokenType.KW_END) &&
+        !this.check(TokenType.KW_ELSE)
+      ) {
+        expr = this.parseExpression();
+        if (
+          expr.type === 'Variable' &&
+          !this.isAtEnd() &&
+          this.peek().line === loc.line &&
+          !this.check(TokenType.SEMICOLON) &&
+          !this.check(TokenType.RBRACE) &&
+          !this.check(TokenType.KW_END) &&
+          !this.check(TokenType.KW_ELSE)
+        ) {
+          const args = this.parseRemainingLineArgs(loc.line);
+          expr = new FuncCallNode(expr.name, args, expr.loc);
+        }
+      } else {
+        expr = new NumberLiteralNode(0, loc);
+      }
+      return new ReturnNode(expr, loc);
+    }
+
     // Variable assignment: LET <name> [=] <expr>
     if (this.match(TokenType.KW_LET)) {
       const nameToken = this.consume(
@@ -1067,7 +1165,19 @@ class Parser {
       );
       // Optional '='
       this.match(TokenType.ASSIGN);
-      const expr = this.parseExpression();
+      let expr = this.parseExpression();
+      if (
+        expr.type === 'Variable' &&
+        !this.isAtEnd() &&
+        this.peek().line === loc.line &&
+        !this.check(TokenType.SEMICOLON) &&
+        !this.check(TokenType.RBRACE) &&
+        !this.check(TokenType.KW_END) &&
+        !this.check(TokenType.KW_ELSE)
+      ) {
+        const args = this.parseRemainingLineArgs(loc.line);
+        expr = new FuncCallNode(expr.name, args, expr.loc);
+      }
       return new AssignNode(nameToken.value, expr, loc);
     }
 
@@ -1124,18 +1234,61 @@ class Parser {
       if (nextToken && nextToken.type === TokenType.ASSIGN) {
         const idToken = this.advance();
         this.advance(); // consume '='
-        const expr = this.parseExpression();
+        let expr = this.parseExpression();
+        if (
+          expr.type === 'Variable' &&
+          !this.isAtEnd() &&
+          this.peek().line === loc.line &&
+          !this.check(TokenType.SEMICOLON) &&
+          !this.check(TokenType.RBRACE) &&
+          !this.check(TokenType.KW_END) &&
+          !this.check(TokenType.KW_ELSE)
+        ) {
+          const args = this.parseRemainingLineArgs(loc.line);
+          expr = new FuncCallNode(expr.name, args, expr.loc);
+        }
         return new AssignNode(idToken.value, expr, loc);
       }
       const idToken = this.advance();
-      this.consumeOptionalParens();
-      return new CallNode(idToken.value, loc);
+      const args = this.parseCallArgs(idToken.line);
+      return new CallNode(idToken.value, loc, args);
     }
 
     // If unexpected token:
     throw new Error(
       `Neočekávaný příkaz '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
     );
+  }
+
+  parseCallArgs(line) {
+    const args = [];
+    if (this.match(TokenType.LPAREN)) {
+      while (!this.isAtEnd() && !this.check(TokenType.RPAREN)) {
+        args.push(this.parseExpression());
+        this.match(TokenType.COMMA);
+      }
+      this.consume(TokenType.RPAREN, "Očekávána ')' za argumenty / Expected ')' after arguments");
+      return args;
+    }
+    return this.parseRemainingLineArgs(line);
+  }
+
+  parseRemainingLineArgs(line) {
+    const args = [];
+    while (
+      !this.isAtEnd() &&
+      this.peek().line === line &&
+      !this.check(TokenType.SEMICOLON) &&
+      !this.check(TokenType.RBRACE) &&
+      !this.check(TokenType.KW_END) &&
+      !this.check(TokenType.KW_ELSE) &&
+      !this.check(TokenType.KW_THEN) &&
+      !this.check(TokenType.KW_TIMES)
+    ) {
+      args.push(this.parseExpression());
+      this.match(TokenType.COMMA);
+    }
+    return args;
   }
 
   consumeOptionalParens() {
@@ -1267,6 +1420,32 @@ class Parser {
     }
 
     if (this.match(TokenType.IDENTIFIER)) {
+      if (this.match(TokenType.LPAREN)) {
+        const args = [];
+        while (!this.isAtEnd() && !this.check(TokenType.RPAREN)) {
+          args.push(this.parseExpression());
+          this.match(TokenType.COMMA);
+        }
+        this.consume(
+          TokenType.RPAREN,
+          "Očekávána ')' za argumenty funkce / Expected ')' after function arguments"
+        );
+        return new FuncCallNode(token.value, args, loc);
+      }
+
+      const canon = canonicalize(token.value);
+      if (
+        UNARY_MATH_FUNCS.has(canon) &&
+        !this.isAtEnd() &&
+        this.peek().line === token.line &&
+        (this.check(TokenType.NUMBER) ||
+          this.check(TokenType.IDENTIFIER) ||
+          this.check(TokenType.LPAREN))
+      ) {
+        const arg = this.parseUnary();
+        return new FuncCallNode(token.value, [arg], loc);
+      }
+
       return new VariableNode(token.value, loc);
     }
 
@@ -1802,7 +1981,7 @@ class KarelRenderer {
   }
 
   computeLayout() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     const w = this.canvas.width / dpr;
     const h = this.canvas.height / dpr;
 
@@ -1811,7 +1990,7 @@ class KarelRenderer {
 
     const sizeW = Math.floor(availW / this.world.width);
     const sizeH = Math.floor(availH / this.world.height);
-    this.metrics.cellSize = Math.max(16, Math.min(64, Math.min(sizeW, sizeH)));
+    this.metrics.cellSize = Math.max(10, Math.min(64, Math.min(sizeW, sizeH)));
 
     this.metrics.gridWidth = this.metrics.cellSize * this.world.width;
     this.metrics.gridHeight = this.metrics.cellSize * this.world.height;
@@ -1834,11 +2013,11 @@ class KarelRenderer {
     return { px, py };
   }
 
-  // Convert canvas pixel to world coordinates
+  // Convert canvas pixel to continuous 1-indexed cell coordinates (cell x spans [x, x+1), center at x+0.5)
   pixelToWorld(px, py) {
     const { offsetX, offsetY, cellSize, gridHeight } = this.metrics;
-    const wx = (px - offsetX) / cellSize + 0.5;
-    const wy = (offsetY + gridHeight - py) / cellSize + 0.5;
+    const wx = (px - offsetX) / cellSize + 1;
+    const wy = (offsetY + gridHeight - py) / cellSize + 1;
     return { wx, wy };
   }
 
@@ -2192,7 +2371,7 @@ class KarelRenderer {
    * - { type: 'CELL', x, y } if clicked in cell center
    * - null if clicked outside grid
    */
-  hitTest(pixelX, pixelY) {
+  hitTest(pixelX, pixelY, toolMode = null) {
     const { offsetX, offsetY, cellSize, gridWidth, gridHeight } = this.metrics;
     if (
       pixelX < offsetX ||
@@ -2203,29 +2382,42 @@ class KarelRenderer {
       return null;
     }
 
-    const { wx, wy } = this.pixelToWorld(pixelX, pixelY);
-    const cellX = Math.floor(wx);
-    const cellY = Math.floor(wy);
+    const gx = (pixelX - offsetX) / cellSize; // 0 .. width
+    const gy = (offsetY + gridHeight - pixelY) / cellSize; // 0 .. height
 
-    const relX = wx - cellX; // 0..1 inside cell
-    const relY = wy - cellY; // 0..1 inside cell
+    const cellX = Math.min(this.world.width, Math.max(1, Math.floor(gx) + 1));
+    const cellY = Math.min(this.world.height, Math.max(1, Math.floor(gy) + 1));
 
-    const edgeThreshold = 0.22; // within 22% of cell edge
+    // When placing Karel or beepers, any click inside a cell targets that cell
+    if (toolMode === 'karel' || toolMode === 'beeper') {
+      return { type: 'CELL', x: cellX, y: cellY };
+    }
 
-    // Vertical wall test (East edge of cellX or West edge)
+    const relX = gx - (cellX - 1); // 0..1 inside cell (0 = West edge, 0.5 = center, 1 = East edge)
+    const relY = gy - (cellY - 1); // 0..1 inside cell (0 = South edge, 0.5 = center, 1 = North edge)
+
+    const edgeThreshold = toolMode === 'wall' ? 0.35 : 0.22;
+    const candidates = [];
+
+    // Vertical wall test (East edge of cellX or West edge of cellX)
     if (relX > 1 - edgeThreshold && cellX < this.world.width) {
-      return { type: 'WALL_V', x: cellX, y: cellY };
+      candidates.push({ dist: 1 - relX, hit: { type: 'WALL_V', x: cellX, y: cellY } });
     }
     if (relX < edgeThreshold && cellX > 1) {
-      return { type: 'WALL_V', x: cellX - 1, y: cellY };
+      candidates.push({ dist: relX, hit: { type: 'WALL_V', x: cellX - 1, y: cellY } });
     }
 
-    // Horizontal wall test (North edge of cellY or South edge)
+    // Horizontal wall test (North edge of cellY or South edge of cellY)
     if (relY > 1 - edgeThreshold && cellY < this.world.height) {
-      return { type: 'WALL_H', x: cellX, y: cellY };
+      candidates.push({ dist: 1 - relY, hit: { type: 'WALL_H', x: cellX, y: cellY } });
     }
     if (relY < edgeThreshold && cellY > 1) {
-      return { type: 'WALL_H', x: cellX, y: cellY - 1 };
+      candidates.push({ dist: relY, hit: { type: 'WALL_H', x: cellX, y: cellY - 1 } });
+    }
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => a.dist - b.dist);
+      return candidates[0].hit;
     }
 
     // Inside cell
@@ -2263,6 +2455,7 @@ class Interpreter {
     this.maxCallDepth = 500;
     this.maxOperations = 100000;
     this.variables = new Map();
+    this.callStack = [];
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
@@ -2311,6 +2504,7 @@ class Interpreter {
     this.program = programNode;
     this.generator = null;
     this.variables.clear();
+    this.callStack = [];
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
@@ -2319,11 +2513,16 @@ class Interpreter {
 
   initGenerator() {
     if (!this.program) return null;
+    this.callStack = [];
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
     this.generator = this.runProgramGenerator(this.program);
     return this.generator;
+  }
+
+  hasActiveReturn() {
+    return this.callStack.length > 0 && this.callStack[this.callStack.length - 1].returned;
   }
 
   *runProgramGenerator(program) {
@@ -2332,6 +2531,8 @@ class Interpreter {
 
   *runStatements(statements, procedures) {
     for (const stmt of statements) {
+      if (this.hasActiveReturn()) return;
+
       this.operationCount++;
       if (this.operationCount > this.maxOperations) {
         throw new Error(
@@ -2359,20 +2560,216 @@ class Interpreter {
           break;
 
         case 'Assign':
-          yield* this.runAssign(stmt);
+          yield* this.runAssign(stmt, procedures);
           break;
 
         case 'Call':
           yield* this.runCall(stmt, procedures);
           break;
 
+        case 'Return':
+          yield* this.runReturn(stmt, procedures);
+          return;
+
         default:
           throw new Error(`Neznámý typ uzlu AST / Unknown AST node type: ${stmt.type}`);
       }
+
+      if (this.hasActiveReturn()) return;
     }
   }
 
-  evalExpr(node) {
+  *runReturn(stmt, procedures) {
+    const val = stmt.expr ? (yield* this.evalExpr(stmt.expr, procedures)) : 0;
+    if (this.callStack.length > 0) {
+      const topFrame = this.callStack[this.callStack.length - 1];
+      topFrame.returned = true;
+      topFrame.returnValue = val;
+    }
+    yield {
+      type: 'RETURN',
+      value: val,
+      loc: stmt.loc,
+    };
+  }
+
+  evalBuiltinFunc(norm, args, loc) {
+    const lineInfo = loc ? ` (řádek ${loc.line})` : '';
+    const requireArgs = (min) => {
+      if (args.length < min) {
+        throw new Error(
+          `Funkce '${norm}' vyžaduje alespoň ${min} argument(y), předáno ${args.length} / Function '${norm}' requires at least ${min} argument(s)${lineInfo}`
+        );
+      }
+    };
+
+    switch (norm) {
+      // Karel position getters
+      case 'KDEX':
+      case 'WHEREX':
+      case 'GETX':
+      case 'POSX':
+      case 'KARELX':
+      case 'POZICEX':
+      case 'SOURADNICEX':
+        return this.world.karel.x;
+
+      case 'KDEY':
+      case 'WHEREY':
+      case 'GETY':
+      case 'POSY':
+      case 'KARELY':
+      case 'POZICEY':
+      case 'SOURADNICEY':
+        return this.world.karel.y;
+
+      // Constants as 0-arg functions
+      case 'PI':
+        return Math.PI;
+      case 'E':
+        return Math.E;
+
+      // Trigonometric functions (radians)
+      case 'SIN':
+        requireArgs(1);
+        return Math.sin(args[0]);
+      case 'COS':
+        requireArgs(1);
+        return Math.cos(args[0]);
+      case 'TAN':
+      case 'TG':
+        requireArgs(1);
+        return Math.tan(args[0]);
+      case 'ASIN':
+      case 'ARCSIN':
+        requireArgs(1);
+        return Math.asin(args[0]);
+      case 'ACOS':
+      case 'ARCCOS':
+        requireArgs(1);
+        return Math.acos(args[0]);
+      case 'ATAN':
+      case 'ARCTAN':
+      case 'ATG':
+        requireArgs(1);
+        return Math.atan(args[0]);
+      case 'ATAN2':
+      case 'ARCTAN2':
+        requireArgs(2);
+        return Math.atan2(args[0], args[1]);
+
+      // Trigonometric functions (degrees) & conversions
+      case 'SIND':
+      case 'SINDEG':
+        requireArgs(1);
+        return Math.sin((args[0] * Math.PI) / 180);
+      case 'COSD':
+      case 'COSDEG':
+        requireArgs(1);
+        return Math.cos((args[0] * Math.PI) / 180);
+      case 'TAND':
+      case 'TANDEG':
+      case 'TGD':
+        requireArgs(1);
+        return Math.tan((args[0] * Math.PI) / 180);
+      case 'RAD':
+      case 'TORAD':
+      case 'RADIANS':
+        requireArgs(1);
+        return (args[0] * Math.PI) / 180;
+      case 'DEG':
+      case 'TODEG':
+      case 'DEGREES':
+        requireArgs(1);
+        return (args[0] * 180) / Math.PI;
+
+      // Rounding & basic math functions
+      case 'ROUND':
+      case 'ZAOKROUHLI':
+        requireArgs(1);
+        return Math.round(args[0]);
+      case 'FLOOR':
+      case 'PODLAHA':
+      case 'CELACAST':
+        requireArgs(1);
+        return Math.floor(args[0]);
+      case 'CEIL':
+      case 'CEILING':
+      case 'STROP':
+        requireArgs(1);
+        return Math.ceil(args[0]);
+      case 'TRUNC':
+      case 'INT':
+        requireArgs(1);
+        return Math.trunc(args[0]);
+      case 'FRAC':
+        requireArgs(1);
+        return args[0] - Math.trunc(args[0]);
+      case 'ABS':
+        requireArgs(1);
+        return Math.abs(args[0]);
+      case 'SQRT':
+      case 'ODMOCNINA':
+        requireArgs(1);
+        if (args[0] < 0) {
+          throw new Error(`Odmocnina ze záporného čísla / Square root of negative number${lineInfo}`);
+        }
+        return Math.sqrt(args[0]);
+      case 'CBRT':
+        requireArgs(1);
+        return Math.cbrt(args[0]);
+      case 'POW':
+      case 'MOCNINA':
+        requireArgs(2);
+        return Math.pow(args[0], args[1]);
+      case 'EXP':
+        requireArgs(1);
+        return Math.exp(args[0]);
+      case 'LOG':
+      case 'LN':
+        requireArgs(1);
+        return Math.log(args[0]);
+      case 'LOG10':
+        requireArgs(1);
+        return Math.log10(args[0]);
+      case 'LOG2':
+        requireArgs(1);
+        return Math.log2(args[0]);
+      case 'SIGN':
+      case 'SGN':
+      case 'ZNAMENKO':
+        requireArgs(1);
+        return Math.sign(args[0]);
+      case 'MIN':
+        requireArgs(2);
+        return Math.min(...args);
+      case 'MAX':
+        requireArgs(2);
+        return Math.max(...args);
+      case 'CLAMP':
+      case 'OMEZ':
+        requireArgs(3);
+        return Math.min(Math.max(args[0], args[1]), args[2]);
+      case 'HYPOT':
+      case 'VZDALENOST':
+      case 'DIST':
+        requireArgs(2);
+        return Math.hypot(...args);
+      case 'RANDOM':
+      case 'RAND':
+      case 'NAHODA':
+        if (args.length === 0) return Math.random();
+        if (args.length === 1) return Math.floor(Math.random() * args[0]);
+        return Math.floor(args[0] + Math.random() * (args[1] - args[0] + 1));
+
+      default:
+        throw new Error(
+          `Neznámá funkce '${norm}' / Unknown function '${norm}'${lineInfo}`
+        );
+    }
+  }
+
+  *evalExpr(node, procedures) {
     if (!node) return 0;
     if (typeof node === 'number') return node;
 
@@ -2382,24 +2779,80 @@ class Interpreter {
 
       case 'Variable': {
         const key = canonicalize(node.name);
-        if (!this.variables.has(key)) {
-          throw new Error(
-            `Nedefinovaná proměnná '${node.name}' / Undefined variable '${node.name}' (řádek ${node.loc.line})`
+        // 1. Check local scope in top call frame
+        if (this.callStack.length > 0) {
+          const topFrame = this.callStack[this.callStack.length - 1];
+          if (topFrame.locals.has(key)) {
+            return topFrame.locals.get(key);
+          }
+        }
+        // 2. Check global variables
+        if (this.variables.has(key)) {
+          return this.variables.get(key);
+        }
+        // 3. Built-in 0-argument position getters and constants (kdeX, kdeY, whereX, whereY, PI, E)
+        if (
+          key === 'KDEX' ||
+          key === 'WHEREX' ||
+          key === 'GETX' ||
+          key === 'POSX' ||
+          key === 'KARELX' ||
+          key === 'POZICEX' ||
+          key === 'SOURADNICEX'
+        ) {
+          return this.world.karel.x;
+        }
+        if (
+          key === 'KDEY' ||
+          key === 'WHEREY' ||
+          key === 'GETY' ||
+          key === 'POSY' ||
+          key === 'KARELY' ||
+          key === 'POZICEY' ||
+          key === 'SOURADNICEY'
+        ) {
+          return this.world.karel.y;
+        }
+        if (key === 'PI') return Math.PI;
+        if (key === 'E') return Math.E;
+
+        // 4. Zero-argument user-defined function called without parentheses
+        const activeProcedures = procedures || this.program?.procedures;
+        if (activeProcedures && activeProcedures.has(key)) {
+          return yield* this.runCall({ name: node.name, args: [], loc: node.loc }, activeProcedures);
+        }
+
+        throw new Error(
+          `Nedefinovaná proměnná '${node.name}' / Undefined variable '${node.name}' (řádek ${node.loc.line})`
+        );
+      }
+
+      case 'FuncCall': {
+        const norm = canonicalize(node.name);
+        const activeProcedures = procedures || this.program?.procedures;
+        if (activeProcedures && activeProcedures.has(norm)) {
+          return yield* this.runCall(
+            { name: node.name, args: node.args || [], loc: node.loc },
+            activeProcedures
           );
         }
-        return this.variables.get(key);
+        const evalArgs = [];
+        for (const argExpr of node.args || []) {
+          evalArgs.push(yield* this.evalExpr(argExpr, activeProcedures));
+        }
+        return this.evalBuiltinFunc(norm, evalArgs, node.loc);
       }
 
       case 'BinaryOp': {
-        const left = this.evalExpr(node.left);
-        const right = this.evalExpr(node.right);
+        const left = yield* this.evalExpr(node.left, procedures);
+        const right = yield* this.evalExpr(node.right, procedures);
         switch (node.op) {
           case '+': return left + right;
           case '-': return left - right;
           case '*': return left * right;
           case '/':
             if (right === 0) throw new Error(`Dělení nulou / Division by zero (řádek ${node.loc.line})`);
-            return Math.floor(left / right);
+            return left / right;
           case '%':
             if (right === 0) throw new Error(`Modulo nulou / Modulo by zero (řádek ${node.loc.line})`);
             return ((left % right) + right) % right;
@@ -2415,7 +2868,7 @@ class Interpreter {
       }
 
       case 'UnaryOp': {
-        const val = this.evalExpr(node.operand);
+        const val = yield* this.evalExpr(node.operand, procedures);
         if (node.op === '-') return -val;
         if (node.op === '!' || node.op === 'NOT') return val ? 0 : 1;
         return val;
@@ -2426,17 +2879,21 @@ class Interpreter {
     }
   }
 
-  evalCondition(condition) {
+  *evalCondition(condition, procedures) {
     if (condition.type === 'ExprCondition') {
-      return Boolean(this.evalExpr(condition.expr));
+      return Boolean(yield* this.evalExpr(condition.expr, procedures));
     }
     return this.world.evalCondition(condition.test, condition.inverted);
   }
 
-  *runAssign(stmt) {
-    const val = this.evalExpr(stmt.expr);
+  *runAssign(stmt, procedures) {
+    const val = yield* this.evalExpr(stmt.expr, procedures);
     const key = canonicalize(stmt.name);
-    this.variables.set(key, val);
+    if (this.callStack.length > 0 && this.callStack[this.callStack.length - 1].locals.has(key)) {
+      this.callStack[this.callStack.length - 1].locals.set(key, val);
+    } else {
+      this.variables.set(key, val);
+    }
     this.emit('variableChange', stmt.name, val);
     yield {
       type: 'ASSIGN',
@@ -2454,7 +2911,7 @@ class Interpreter {
         procedures?.get('TURNRIGHT') ||
         procedures?.get('RIGHT');
       if (rightProc) {
-        yield* this.runCall({ name: rightProc.name, loc: stmt.loc }, procedures);
+        yield* this.runCall({ name: rightProc.name, args: [], loc: stmt.loc }, procedures);
         return;
       }
     }
@@ -2464,7 +2921,7 @@ class Interpreter {
         procedures?.get('VZAD') ||
         procedures?.get('TURNAROUND');
       if (aroundProc) {
-        yield* this.runCall({ name: aroundProc.name, loc: stmt.loc }, procedures);
+        yield* this.runCall({ name: aroundProc.name, args: [], loc: stmt.loc }, procedures);
         return;
       }
     }
@@ -2502,14 +2959,18 @@ class Interpreter {
   }
 
   *runRepeat(stmt, procedures) {
-    const times = typeof stmt.count === 'number' ? stmt.count : this.evalExpr(stmt.count);
+    const rawCount = typeof stmt.count === 'number' ? stmt.count : (yield* this.evalExpr(stmt.count, procedures));
+    const times = Math.max(0, Math.round(rawCount));
     for (let i = 0; i < times; i++) {
+      if (this.hasActiveReturn()) break;
       yield* this.runStatements(stmt.body, procedures);
     }
   }
 
   *runWhile(stmt, procedures) {
     while (true) {
+      if (this.hasActiveReturn()) break;
+
       this.operationCount++;
       if (this.operationCount > this.maxOperations) {
         throw new Error(
@@ -2518,7 +2979,7 @@ class Interpreter {
       }
 
       // Check condition
-      const condVal = this.evalCondition(stmt.condition);
+      const condVal = yield* this.evalCondition(stmt.condition, procedures);
       yield {
         type: 'CONDITION_EVAL',
         result: condVal,
@@ -2532,7 +2993,7 @@ class Interpreter {
   }
 
   *runIf(stmt, procedures) {
-    const condVal = this.evalCondition(stmt.condition);
+    const condVal = yield* this.evalCondition(stmt.condition, procedures);
     yield {
       type: 'CONDITION_EVAL',
       result: condVal,
@@ -2548,7 +3009,8 @@ class Interpreter {
 
   *runCall(stmt, procedures) {
     const norm = canonicalize(stmt.name);
-    const proc = procedures.get(norm);
+    const activeProcedures = procedures || this.program?.procedures;
+    const proc = activeProcedures?.get(norm);
     if (!proc) {
       throw new Error(
         `Neznámý příkaz nebo procedura '${stmt.name}' / Unknown procedure '${stmt.name}' (řádek ${stmt.loc.line})`
@@ -2561,10 +3023,42 @@ class Interpreter {
       );
     }
 
+    // Evaluate argument expressions in the caller's scope before pushing the new call frame
+    const evaluatedArgs = [];
+    for (const argExpr of stmt.args || []) {
+      evaluatedArgs.push(yield* this.evalExpr(argExpr, activeProcedures));
+    }
+
+    const params = proc.params || [];
+    if (evaluatedArgs.length < params.length) {
+      throw new Error(
+        `Procedura/funkce '${proc.name}' očekává ${params.length} argument(ů), ale bylo předáno ${evaluatedArgs.length} / Procedure '${proc.name}' expects ${params.length} argument(s), got ${evaluatedArgs.length} (řádek ${stmt.loc.line})`
+      );
+    }
+
+    const frame = {
+      name: norm,
+      locals: new Map(),
+      returned: false,
+      returnValue: 0,
+    };
+    for (let i = 0; i < params.length; i++) {
+      frame.locals.set(canonicalize(params[i]), evaluatedArgs[i]);
+    }
+
     this.callDepth++;
+    this.callStack.push(frame);
     try {
-      yield* this.runStatements(proc.body, procedures);
+      yield* this.runStatements(proc.body, activeProcedures);
+      if (frame.returned) {
+        return frame.returnValue;
+      }
+      if (frame.locals.has(norm)) {
+        return frame.locals.get(norm);
+      }
+      return 0;
     } finally {
+      this.callStack.pop();
       this.callDepth--;
     }
   }
@@ -2661,6 +3155,7 @@ class Interpreter {
     this.stopTimer();
     this.generator = null;
     this.variables.clear();
+    this.callStack = [];
     this.emit('highlightLine', null);
     this.setState(InterpreterState.IDLE);
   }
@@ -3280,6 +3775,112 @@ END
 `,
     },
   },
+
+  {
+    id: 'sine_wave_20x20',
+    title: {
+      cs: '9. Sinusovka na mřížce 20×20 (Funkce, kdeX/kdeY, sin)',
+      en: '9. Sine Wave on 20×20 Grid (Functions, whereX/whereY, sin)',
+    },
+    desc: {
+      cs: 'Karel vykreslí sinusovku v mřížce 20×20 pomocí vlastní funkce, parametrů, souřadnic kdeX/kdeY a goniometrické funkce sin/round.',
+      en: 'Karel plots a sine wave on a 20×20 grid using custom functions, parameters, whereX/whereY coordinates, and sin/round.',
+    },
+    world: {
+      width: 20,
+      height: 20,
+      karel: { x: 1, y: 1, dir: 'EAST', bag: Infinity },
+      verticalWalls: [],
+      horizontalWalls: [],
+      beepers: [],
+    },
+    code: {
+      cs: `// ==========================================
+// SINUSOVKA NA MŘÍŽCE 20×20
+// Demonstrace: FUNKCE, parametry, kdeX/kdeY, sin(), round()
+// ==========================================
+
+PRIKAZ JDI(kroky)
+  OPAKUJ kroky KRAT
+    KROK
+  KONEC
+KONEC
+
+// Funkce spočítá cílovou souřadnici Y pro dané X (1..20)
+FUNKCE CILOVE-Y(x)
+  VRAT 10 + round(8 * sin((x - 1) * PI / 9.5))
+KONEC
+
+// Přesune Karla vertikálně na požadované Y a položí značku
+PRIKAZ VYKRESLI-BOD(cilY)
+  VLEVO-BOK
+  KDYZ cilY > kdeY
+    JDI(cilY - kdeY)
+  JINAK
+    VLEVO-BOK
+    VLEVO-BOK
+    JDI(kdeY - cilY)
+    VLEVO-BOK
+    VLEVO-BOK
+  KONEC
+  POLOZ
+  // Otoč zpět na východ
+  OPAKUJ 3 KRAT
+    VLEVO-BOK
+  KONEC
+KONEC
+
+// Projdeme všech 20 sloupců zleva doprava
+OPAKUJ 19 KRAT
+  VYKRESLI-BOD(CILOVE-Y(kdeX))
+  KROK
+KONEC
+VYKRESLI-BOD(CILOVE-Y(kdeX))
+`,
+      en: `// ==========================================
+// SINE WAVE ON 20×20 GRID
+// Demonstrating: FUNCTION, arguments, whereX/whereY, sin(), round()
+// ==========================================
+
+DEFINE WALK(steps)
+  REPEAT steps TIMES
+    STEP
+  END
+END
+
+// Function computing target Y coordinate for given X (1..20)
+FUNCTION TARGET_Y(x)
+  RETURN 10 + round(8 * sin((x - 1) * PI / 9.5))
+END
+
+// Moves Karel vertically to targetY and places a beeper
+DEFINE PLOT_POINT(targetY)
+  TURN_LEFT
+  IF targetY > whereY
+    WALK(targetY - whereY)
+  ELSE
+    TURN_LEFT
+    TURN_LEFT
+    WALK(whereY - targetY)
+    TURN_LEFT
+    TURN_LEFT
+  END
+  PUT
+  // Face East again
+  REPEAT 3 TIMES
+    TURN_LEFT
+  END
+END
+
+// Traverse all 20 columns from left to right
+REPEAT 19 TIMES
+  PLOT_POINT(TARGET_Y(whereX))
+  STEP
+END
+PLOT_POINT(TARGET_Y(whereX))
+`,
+    },
+  },
 ];
 
 
@@ -3420,11 +4021,11 @@ class KarelApp {
         guideWhileP1: 'Opakuje příkazy tak dlouho, dokud platí daná podmínka (např. dokud před Karlem není zeď):',
         guideIfTitle: '5. Podmínky a rozhodování (KDYŽ / JINAK)',
         guideIfP1: 'Umožňuje Karlovi rozhodnout se na základě toho, co vidí pod sebou nebo před sebou:',
-        guideProcTitle: '6. Vlastní příkazy (Procedury)',
-        guideProcP1: 'Naučte Karla nový povel! Definice začíná slovem PRIKAZ <nazev> a končí KONEC:',
+        guideProcTitle: '6. Vlastní příkazy a funkce (s parametry)',
+        guideProcP1: 'Naučte Karla nový povel nebo funkci! Definice začíná PRIKAZ <nazev>(param1, param2) nebo FUNKCE <nazev>(x) (návratová hodnota přes VRAT <výraz>) a končí KONEC:',
         guideSensorsTitle: '7. Dostupné podmínky a senzory',
-        guideVarTitle: '8. Proměnné, aritmetika a modulo (%)',
-        guideVarP1: 'Pro pokročilé algoritmy můžete používat proměnné s klíčovým slovem LET (rovnítko = je volitelné), aritmetiku (+, -, *, /, % nebo MOD) a porovnávat v podmínkách i cyklech (idx < 5, idx % 2 == 0):',
+        guideVarTitle: '8. Proměnné, kdeX/kdeY a matematické funkce',
+        guideVarP1: 'Používejte proměnné s LET, pozici Karla kdeX / kdeY (EN: whereX / whereY) a vestavěné matematické funkce: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
       },
       en: {
         cheatsheet: 'Cheatsheet',
@@ -3463,18 +4064,18 @@ class KarelApp {
         guideIntroP2: 'Primitive commands: STEP (move forward 1 corner), TURN_LEFT (rotate 90° counter-clockwise), PUT (place a beeper from bag), and PICK (pick up a beeper into bag).',
         guideStructTitle: '2. Program Structure (Syntax Rules)',
         guideStructP1: 'Commands are written on separate lines. Lines beginning with // are comments that Karel ignores.',
-        guideStructP2: 'All compound statements (REPEAT, WHILE, IF, and DEFINE) must always end with the keyword END.',
+        guideStructP2: 'All compound statements (REPEAT, WHILE, IF, DEFINE, and FUNCTION) must always end with the keyword END.',
         guideRepeatTitle: '3. Fixed Repeat Loop (REPEAT)',
         guideRepeatP1: 'When you want to repeat a sequence of commands a specific number of times (e.g. 4 times):',
         guideWhileTitle: '4. Conditional Loop (WHILE)',
         guideWhileP1: 'Repeats commands as long as the condition evaluates to true (e.g. while front is clear):',
         guideIfTitle: '5. Branching & Conditions (IF / ELSE)',
         guideIfP1: 'Allows Karel to make decisions based on what is in front or beneath:',
-        guideProcTitle: '6. Custom Procedures (DEFINE)',
-        guideProcP1: 'Teach Karel a new command! Begins with DEFINE <name> and ends with END:',
+        guideProcTitle: '6. Custom Procedures & Functions (with arguments)',
+        guideProcP1: 'Teach Karel a new command or function! Begins with DEFINE <name>(a, b) or FUNCTION <name>(x) (return value via RETURN <expr>) and ends with END:',
         guideSensorsTitle: '7. Available Conditions & Sensors',
-        guideVarTitle: '8. Variables, Arithmetic & Modulo (%)',
-        guideVarP1: 'For advanced algorithms, use variables with LET (equals = is optional), arithmetic (+, -, *, /, % or MOD), and comparisons in conditions and loops (idx < 5, idx % 2 == 0):',
+        guideVarTitle: '8. Variables, whereX/whereY & Math Functions',
+        guideVarP1: 'Use variables with LET, Karel coordinates whereX / whereY (CS: kdeX / kdeY), and built-in math functions: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
       },
     };
   }
@@ -3519,8 +4120,8 @@ class KarelApp {
         break;
       case 'proc':
         snippet = isCs
-          ? 'PRIKAZ MOJE-PROCEDURA\n  KROK\nKONEC\n'
-          : 'DEFINE MY_PROCEDURE\n  STEP\nEND\n';
+          ? 'PRIKAZ MOJE-PROCEDURA(n)\n  OPAKUJ n KRAT\n    KROK\n  KONEC\nKONEC\n'
+          : 'DEFINE MY_PROCEDURE(n)\n  REPEAT n TIMES\n    STEP\n  END\nEND\n';
         break;
       case 'let':
         snippet = isCs
@@ -3561,8 +4162,8 @@ class KarelApp {
         break;
       case 'proc':
         sample = isCs
-          ? 'PRIKAZ VPRAVO-BOK\n  OPAKUJ 3 KRAT\n    VLEVO-BOK\n  KONEC\nKONEC\n\n// Použití:\nKROK\nVPRAVO-BOK\nKROK\n'
-          : 'DEFINE TURN_RIGHT\n  REPEAT 3 TIMES\n    TURN_LEFT\n  END\nEND\n\n// Usage:\nSTEP\nTURN_RIGHT\nSTEP\n';
+          ? 'PRIKAZ JDI(kroky)\n  OPAKUJ kroky KRAT\n    KROK\n  KONEC\nKONEC\n\nFUNKCE VZDALENOST(cilX, cilY)\n  VRAT round(hypot(cilX - kdeX, cilY - kdeY))\nKONEC\n\n// Použití:\nJDI(3)\nLET d = VZDALENOST(10, 10)\n'
+          : 'DEFINE WALK(steps)\n  REPEAT steps TIMES\n    STEP\n  END\nEND\n\nFUNCTION DISTANCE(targetX, targetY)\n  RETURN round(hypot(targetX - whereX, targetY - whereY))\nEND\n\n// Usage:\nWALK(3)\nLET d = DISTANCE(10, 10)\n';
         break;
       case 'var':
         sample = isCs
@@ -3812,18 +4413,22 @@ class KarelApp {
     });
 
     // World resize
-    this.dom.resizeBtn.addEventListener('click', () => {
-      const w = parseInt(this.dom.worldW.value, 10);
-      const h = parseInt(this.dom.worldH.value, 10);
-      this.world.resize(w, h);
-      this.renderer.syncRobotImmediate();
-      this.updateHUD();
-      this.log(`Rozměry světa změněny na ${this.world.width} × ${this.world.height}`, 'info');
-    });
+    this.dom.resizeBtn.addEventListener('click', () => this.applyWorldResize(true));
+    this.dom.worldW.addEventListener('change', () => this.applyWorldResize(true));
+    this.dom.worldH.addEventListener('change', () => this.applyWorldResize(true));
+    const onResizeKey = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.applyWorldResize(true);
+      }
+    };
+    this.dom.worldW.addEventListener('keydown', onResizeKey);
+    this.dom.worldH.addEventListener('keydown', onResizeKey);
 
     // Clear world
     this.dom.clearWorldBtn.addEventListener('click', () => {
       this.interpreter.stop();
+      this.applyWorldResize(false);
       this.world.clear();
       this.renderer.syncRobotImmediate();
       this.updateHUD();
@@ -3833,6 +4438,7 @@ class KarelApp {
     // Random maze generator
     this.dom.mazeBtn.addEventListener('click', () => {
       this.interpreter.stop();
+      this.applyWorldResize(false);
       this.generateMaze();
       this.renderer.syncRobotImmediate();
       this.updateHUD();
@@ -3857,6 +4463,28 @@ class KarelApp {
     this.interpreter.on('action', (action, karel) => this.handleInterpreterAction(action, karel));
     this.interpreter.on('error', (err) => this.handleInterpreterError(err));
     this.interpreter.on('finish', (stats) => this.handleInterpreterFinish(stats));
+  }
+
+  applyWorldResize(logChange = true) {
+    const rawW = parseInt(this.dom.worldW.value, 10);
+    const rawH = parseInt(this.dom.worldH.value, 10);
+    const w = Number.isFinite(rawW) ? rawW : this.world.width;
+    const h = Number.isFinite(rawH) ? rawH : this.world.height;
+    if (w !== this.world.width || h !== this.world.height) {
+      this.interpreter.stop();
+      this.hideActiveLine();
+      this.world.resize(w, h);
+      this.dom.worldW.value = this.world.width;
+      this.dom.worldH.value = this.world.height;
+      this.renderer.syncRobotImmediate();
+      this.updateHUD();
+      if (logChange) {
+        this.log(`Rozměry světa změněny na ${this.world.width} × ${this.world.height}`, 'info');
+      }
+    } else {
+      this.dom.worldW.value = this.world.width;
+      this.dom.worldH.value = this.world.height;
+    }
   }
 
   updateAudioButton() {
@@ -3962,6 +4590,8 @@ class KarelApp {
       return;
     }
 
+    this.applyWorldResize(false);
+
     try {
       const ast = this.compile();
       this.interpreter.loadProgram(ast);
@@ -3979,6 +4609,7 @@ class KarelApp {
       this.interpreter.state === InterpreterState.FINISHED ||
       this.interpreter.state === InterpreterState.ERROR
     ) {
+      this.applyWorldResize(false);
       try {
         const ast = this.compile();
         this.interpreter.loadProgram(ast);
@@ -4086,8 +4717,15 @@ class KarelApp {
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
-    const hit = this.renderer.hitTest(px, py);
+    // Ensure layout metrics are up to date before hit-testing
+    this.renderer.computeLayout();
+    const hit = this.renderer.hitTest(px, py, this.currentTool);
     if (!hit) return;
+
+    if (this.interpreter.state !== InterpreterState.IDLE) {
+      this.interpreter.stop();
+      this.hideActiveLine();
+    }
 
     if (this.currentTool === 'beeper') {
       if (hit.type === 'CELL') {

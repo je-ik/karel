@@ -27,6 +27,7 @@ export class Interpreter {
     this.maxCallDepth = 500;
     this.maxOperations = 100000;
     this.variables = new Map();
+    this.callStack = [];
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
@@ -75,6 +76,7 @@ export class Interpreter {
     this.program = programNode;
     this.generator = null;
     this.variables.clear();
+    this.callStack = [];
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
@@ -83,11 +85,16 @@ export class Interpreter {
 
   initGenerator() {
     if (!this.program) return null;
+    this.callStack = [];
     this.callDepth = 0;
     this.operationCount = 0;
     this.actionCount = 0;
     this.generator = this.runProgramGenerator(this.program);
     return this.generator;
+  }
+
+  hasActiveReturn() {
+    return this.callStack.length > 0 && this.callStack[this.callStack.length - 1].returned;
   }
 
   *runProgramGenerator(program) {
@@ -96,6 +103,8 @@ export class Interpreter {
 
   *runStatements(statements, procedures) {
     for (const stmt of statements) {
+      if (this.hasActiveReturn()) return;
+
       this.operationCount++;
       if (this.operationCount > this.maxOperations) {
         throw new Error(
@@ -123,20 +132,216 @@ export class Interpreter {
           break;
 
         case 'Assign':
-          yield* this.runAssign(stmt);
+          yield* this.runAssign(stmt, procedures);
           break;
 
         case 'Call':
           yield* this.runCall(stmt, procedures);
           break;
 
+        case 'Return':
+          yield* this.runReturn(stmt, procedures);
+          return;
+
         default:
           throw new Error(`Neznámý typ uzlu AST / Unknown AST node type: ${stmt.type}`);
       }
+
+      if (this.hasActiveReturn()) return;
     }
   }
 
-  evalExpr(node) {
+  *runReturn(stmt, procedures) {
+    const val = stmt.expr ? (yield* this.evalExpr(stmt.expr, procedures)) : 0;
+    if (this.callStack.length > 0) {
+      const topFrame = this.callStack[this.callStack.length - 1];
+      topFrame.returned = true;
+      topFrame.returnValue = val;
+    }
+    yield {
+      type: 'RETURN',
+      value: val,
+      loc: stmt.loc,
+    };
+  }
+
+  evalBuiltinFunc(norm, args, loc) {
+    const lineInfo = loc ? ` (řádek ${loc.line})` : '';
+    const requireArgs = (min) => {
+      if (args.length < min) {
+        throw new Error(
+          `Funkce '${norm}' vyžaduje alespoň ${min} argument(y), předáno ${args.length} / Function '${norm}' requires at least ${min} argument(s)${lineInfo}`
+        );
+      }
+    };
+
+    switch (norm) {
+      // Karel position getters
+      case 'KDEX':
+      case 'WHEREX':
+      case 'GETX':
+      case 'POSX':
+      case 'KARELX':
+      case 'POZICEX':
+      case 'SOURADNICEX':
+        return this.world.karel.x;
+
+      case 'KDEY':
+      case 'WHEREY':
+      case 'GETY':
+      case 'POSY':
+      case 'KARELY':
+      case 'POZICEY':
+      case 'SOURADNICEY':
+        return this.world.karel.y;
+
+      // Constants as 0-arg functions
+      case 'PI':
+        return Math.PI;
+      case 'E':
+        return Math.E;
+
+      // Trigonometric functions (radians)
+      case 'SIN':
+        requireArgs(1);
+        return Math.sin(args[0]);
+      case 'COS':
+        requireArgs(1);
+        return Math.cos(args[0]);
+      case 'TAN':
+      case 'TG':
+        requireArgs(1);
+        return Math.tan(args[0]);
+      case 'ASIN':
+      case 'ARCSIN':
+        requireArgs(1);
+        return Math.asin(args[0]);
+      case 'ACOS':
+      case 'ARCCOS':
+        requireArgs(1);
+        return Math.acos(args[0]);
+      case 'ATAN':
+      case 'ARCTAN':
+      case 'ATG':
+        requireArgs(1);
+        return Math.atan(args[0]);
+      case 'ATAN2':
+      case 'ARCTAN2':
+        requireArgs(2);
+        return Math.atan2(args[0], args[1]);
+
+      // Trigonometric functions (degrees) & conversions
+      case 'SIND':
+      case 'SINDEG':
+        requireArgs(1);
+        return Math.sin((args[0] * Math.PI) / 180);
+      case 'COSD':
+      case 'COSDEG':
+        requireArgs(1);
+        return Math.cos((args[0] * Math.PI) / 180);
+      case 'TAND':
+      case 'TANDEG':
+      case 'TGD':
+        requireArgs(1);
+        return Math.tan((args[0] * Math.PI) / 180);
+      case 'RAD':
+      case 'TORAD':
+      case 'RADIANS':
+        requireArgs(1);
+        return (args[0] * Math.PI) / 180;
+      case 'DEG':
+      case 'TODEG':
+      case 'DEGREES':
+        requireArgs(1);
+        return (args[0] * 180) / Math.PI;
+
+      // Rounding & basic math functions
+      case 'ROUND':
+      case 'ZAOKROUHLI':
+        requireArgs(1);
+        return Math.round(args[0]);
+      case 'FLOOR':
+      case 'PODLAHA':
+      case 'CELACAST':
+        requireArgs(1);
+        return Math.floor(args[0]);
+      case 'CEIL':
+      case 'CEILING':
+      case 'STROP':
+        requireArgs(1);
+        return Math.ceil(args[0]);
+      case 'TRUNC':
+      case 'INT':
+        requireArgs(1);
+        return Math.trunc(args[0]);
+      case 'FRAC':
+        requireArgs(1);
+        return args[0] - Math.trunc(args[0]);
+      case 'ABS':
+        requireArgs(1);
+        return Math.abs(args[0]);
+      case 'SQRT':
+      case 'ODMOCNINA':
+        requireArgs(1);
+        if (args[0] < 0) {
+          throw new Error(`Odmocnina ze záporného čísla / Square root of negative number${lineInfo}`);
+        }
+        return Math.sqrt(args[0]);
+      case 'CBRT':
+        requireArgs(1);
+        return Math.cbrt(args[0]);
+      case 'POW':
+      case 'MOCNINA':
+        requireArgs(2);
+        return Math.pow(args[0], args[1]);
+      case 'EXP':
+        requireArgs(1);
+        return Math.exp(args[0]);
+      case 'LOG':
+      case 'LN':
+        requireArgs(1);
+        return Math.log(args[0]);
+      case 'LOG10':
+        requireArgs(1);
+        return Math.log10(args[0]);
+      case 'LOG2':
+        requireArgs(1);
+        return Math.log2(args[0]);
+      case 'SIGN':
+      case 'SGN':
+      case 'ZNAMENKO':
+        requireArgs(1);
+        return Math.sign(args[0]);
+      case 'MIN':
+        requireArgs(2);
+        return Math.min(...args);
+      case 'MAX':
+        requireArgs(2);
+        return Math.max(...args);
+      case 'CLAMP':
+      case 'OMEZ':
+        requireArgs(3);
+        return Math.min(Math.max(args[0], args[1]), args[2]);
+      case 'HYPOT':
+      case 'VZDALENOST':
+      case 'DIST':
+        requireArgs(2);
+        return Math.hypot(...args);
+      case 'RANDOM':
+      case 'RAND':
+      case 'NAHODA':
+        if (args.length === 0) return Math.random();
+        if (args.length === 1) return Math.floor(Math.random() * args[0]);
+        return Math.floor(args[0] + Math.random() * (args[1] - args[0] + 1));
+
+      default:
+        throw new Error(
+          `Neznámá funkce '${norm}' / Unknown function '${norm}'${lineInfo}`
+        );
+    }
+  }
+
+  *evalExpr(node, procedures) {
     if (!node) return 0;
     if (typeof node === 'number') return node;
 
@@ -146,24 +351,80 @@ export class Interpreter {
 
       case 'Variable': {
         const key = canonicalize(node.name);
-        if (!this.variables.has(key)) {
-          throw new Error(
-            `Nedefinovaná proměnná '${node.name}' / Undefined variable '${node.name}' (řádek ${node.loc.line})`
+        // 1. Check local scope in top call frame
+        if (this.callStack.length > 0) {
+          const topFrame = this.callStack[this.callStack.length - 1];
+          if (topFrame.locals.has(key)) {
+            return topFrame.locals.get(key);
+          }
+        }
+        // 2. Check global variables
+        if (this.variables.has(key)) {
+          return this.variables.get(key);
+        }
+        // 3. Built-in 0-argument position getters and constants (kdeX, kdeY, whereX, whereY, PI, E)
+        if (
+          key === 'KDEX' ||
+          key === 'WHEREX' ||
+          key === 'GETX' ||
+          key === 'POSX' ||
+          key === 'KARELX' ||
+          key === 'POZICEX' ||
+          key === 'SOURADNICEX'
+        ) {
+          return this.world.karel.x;
+        }
+        if (
+          key === 'KDEY' ||
+          key === 'WHEREY' ||
+          key === 'GETY' ||
+          key === 'POSY' ||
+          key === 'KARELY' ||
+          key === 'POZICEY' ||
+          key === 'SOURADNICEY'
+        ) {
+          return this.world.karel.y;
+        }
+        if (key === 'PI') return Math.PI;
+        if (key === 'E') return Math.E;
+
+        // 4. Zero-argument user-defined function called without parentheses
+        const activeProcedures = procedures || this.program?.procedures;
+        if (activeProcedures && activeProcedures.has(key)) {
+          return yield* this.runCall({ name: node.name, args: [], loc: node.loc }, activeProcedures);
+        }
+
+        throw new Error(
+          `Nedefinovaná proměnná '${node.name}' / Undefined variable '${node.name}' (řádek ${node.loc.line})`
+        );
+      }
+
+      case 'FuncCall': {
+        const norm = canonicalize(node.name);
+        const activeProcedures = procedures || this.program?.procedures;
+        if (activeProcedures && activeProcedures.has(norm)) {
+          return yield* this.runCall(
+            { name: node.name, args: node.args || [], loc: node.loc },
+            activeProcedures
           );
         }
-        return this.variables.get(key);
+        const evalArgs = [];
+        for (const argExpr of node.args || []) {
+          evalArgs.push(yield* this.evalExpr(argExpr, activeProcedures));
+        }
+        return this.evalBuiltinFunc(norm, evalArgs, node.loc);
       }
 
       case 'BinaryOp': {
-        const left = this.evalExpr(node.left);
-        const right = this.evalExpr(node.right);
+        const left = yield* this.evalExpr(node.left, procedures);
+        const right = yield* this.evalExpr(node.right, procedures);
         switch (node.op) {
           case '+': return left + right;
           case '-': return left - right;
           case '*': return left * right;
           case '/':
             if (right === 0) throw new Error(`Dělení nulou / Division by zero (řádek ${node.loc.line})`);
-            return Math.floor(left / right);
+            return left / right;
           case '%':
             if (right === 0) throw new Error(`Modulo nulou / Modulo by zero (řádek ${node.loc.line})`);
             return ((left % right) + right) % right;
@@ -179,7 +440,7 @@ export class Interpreter {
       }
 
       case 'UnaryOp': {
-        const val = this.evalExpr(node.operand);
+        const val = yield* this.evalExpr(node.operand, procedures);
         if (node.op === '-') return -val;
         if (node.op === '!' || node.op === 'NOT') return val ? 0 : 1;
         return val;
@@ -190,17 +451,21 @@ export class Interpreter {
     }
   }
 
-  evalCondition(condition) {
+  *evalCondition(condition, procedures) {
     if (condition.type === 'ExprCondition') {
-      return Boolean(this.evalExpr(condition.expr));
+      return Boolean(yield* this.evalExpr(condition.expr, procedures));
     }
     return this.world.evalCondition(condition.test, condition.inverted);
   }
 
-  *runAssign(stmt) {
-    const val = this.evalExpr(stmt.expr);
+  *runAssign(stmt, procedures) {
+    const val = yield* this.evalExpr(stmt.expr, procedures);
     const key = canonicalize(stmt.name);
-    this.variables.set(key, val);
+    if (this.callStack.length > 0 && this.callStack[this.callStack.length - 1].locals.has(key)) {
+      this.callStack[this.callStack.length - 1].locals.set(key, val);
+    } else {
+      this.variables.set(key, val);
+    }
     this.emit('variableChange', stmt.name, val);
     yield {
       type: 'ASSIGN',
@@ -218,7 +483,7 @@ export class Interpreter {
         procedures?.get('TURNRIGHT') ||
         procedures?.get('RIGHT');
       if (rightProc) {
-        yield* this.runCall({ name: rightProc.name, loc: stmt.loc }, procedures);
+        yield* this.runCall({ name: rightProc.name, args: [], loc: stmt.loc }, procedures);
         return;
       }
     }
@@ -228,7 +493,7 @@ export class Interpreter {
         procedures?.get('VZAD') ||
         procedures?.get('TURNAROUND');
       if (aroundProc) {
-        yield* this.runCall({ name: aroundProc.name, loc: stmt.loc }, procedures);
+        yield* this.runCall({ name: aroundProc.name, args: [], loc: stmt.loc }, procedures);
         return;
       }
     }
@@ -266,14 +531,18 @@ export class Interpreter {
   }
 
   *runRepeat(stmt, procedures) {
-    const times = typeof stmt.count === 'number' ? stmt.count : this.evalExpr(stmt.count);
+    const rawCount = typeof stmt.count === 'number' ? stmt.count : (yield* this.evalExpr(stmt.count, procedures));
+    const times = Math.max(0, Math.round(rawCount));
     for (let i = 0; i < times; i++) {
+      if (this.hasActiveReturn()) break;
       yield* this.runStatements(stmt.body, procedures);
     }
   }
 
   *runWhile(stmt, procedures) {
     while (true) {
+      if (this.hasActiveReturn()) break;
+
       this.operationCount++;
       if (this.operationCount > this.maxOperations) {
         throw new Error(
@@ -282,7 +551,7 @@ export class Interpreter {
       }
 
       // Check condition
-      const condVal = this.evalCondition(stmt.condition);
+      const condVal = yield* this.evalCondition(stmt.condition, procedures);
       yield {
         type: 'CONDITION_EVAL',
         result: condVal,
@@ -296,7 +565,7 @@ export class Interpreter {
   }
 
   *runIf(stmt, procedures) {
-    const condVal = this.evalCondition(stmt.condition);
+    const condVal = yield* this.evalCondition(stmt.condition, procedures);
     yield {
       type: 'CONDITION_EVAL',
       result: condVal,
@@ -312,7 +581,8 @@ export class Interpreter {
 
   *runCall(stmt, procedures) {
     const norm = canonicalize(stmt.name);
-    const proc = procedures.get(norm);
+    const activeProcedures = procedures || this.program?.procedures;
+    const proc = activeProcedures?.get(norm);
     if (!proc) {
       throw new Error(
         `Neznámý příkaz nebo procedura '${stmt.name}' / Unknown procedure '${stmt.name}' (řádek ${stmt.loc.line})`
@@ -325,10 +595,42 @@ export class Interpreter {
       );
     }
 
+    // Evaluate argument expressions in the caller's scope before pushing the new call frame
+    const evaluatedArgs = [];
+    for (const argExpr of stmt.args || []) {
+      evaluatedArgs.push(yield* this.evalExpr(argExpr, activeProcedures));
+    }
+
+    const params = proc.params || [];
+    if (evaluatedArgs.length < params.length) {
+      throw new Error(
+        `Procedura/funkce '${proc.name}' očekává ${params.length} argument(ů), ale bylo předáno ${evaluatedArgs.length} / Procedure '${proc.name}' expects ${params.length} argument(s), got ${evaluatedArgs.length} (řádek ${stmt.loc.line})`
+      );
+    }
+
+    const frame = {
+      name: norm,
+      locals: new Map(),
+      returned: false,
+      returnValue: 0,
+    };
+    for (let i = 0; i < params.length; i++) {
+      frame.locals.set(canonicalize(params[i]), evaluatedArgs[i]);
+    }
+
     this.callDepth++;
+    this.callStack.push(frame);
     try {
-      yield* this.runStatements(proc.body, procedures);
+      yield* this.runStatements(proc.body, activeProcedures);
+      if (frame.returned) {
+        return frame.returnValue;
+      }
+      if (frame.locals.has(norm)) {
+        return frame.locals.get(norm);
+      }
+      return 0;
     } finally {
+      this.callStack.pop();
       this.callDepth--;
     }
   }
@@ -425,6 +727,7 @@ export class Interpreter {
     this.stopTimer();
     this.generator = null;
     this.variables.clear();
+    this.callStack = [];
     this.emit('highlightLine', null);
     this.setState(InterpreterState.IDLE);
   }

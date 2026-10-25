@@ -151,7 +151,7 @@ export class KarelRenderer {
   }
 
   computeLayout() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     const w = this.canvas.width / dpr;
     const h = this.canvas.height / dpr;
 
@@ -160,7 +160,7 @@ export class KarelRenderer {
 
     const sizeW = Math.floor(availW / this.world.width);
     const sizeH = Math.floor(availH / this.world.height);
-    this.metrics.cellSize = Math.max(16, Math.min(64, Math.min(sizeW, sizeH)));
+    this.metrics.cellSize = Math.max(10, Math.min(64, Math.min(sizeW, sizeH)));
 
     this.metrics.gridWidth = this.metrics.cellSize * this.world.width;
     this.metrics.gridHeight = this.metrics.cellSize * this.world.height;
@@ -183,11 +183,11 @@ export class KarelRenderer {
     return { px, py };
   }
 
-  // Convert canvas pixel to world coordinates
+  // Convert canvas pixel to continuous 1-indexed cell coordinates (cell x spans [x, x+1), center at x+0.5)
   pixelToWorld(px, py) {
     const { offsetX, offsetY, cellSize, gridHeight } = this.metrics;
-    const wx = (px - offsetX) / cellSize + 0.5;
-    const wy = (offsetY + gridHeight - py) / cellSize + 0.5;
+    const wx = (px - offsetX) / cellSize + 1;
+    const wy = (offsetY + gridHeight - py) / cellSize + 1;
     return { wx, wy };
   }
 
@@ -541,7 +541,7 @@ export class KarelRenderer {
    * - { type: 'CELL', x, y } if clicked in cell center
    * - null if clicked outside grid
    */
-  hitTest(pixelX, pixelY) {
+  hitTest(pixelX, pixelY, toolMode = null) {
     const { offsetX, offsetY, cellSize, gridWidth, gridHeight } = this.metrics;
     if (
       pixelX < offsetX ||
@@ -552,29 +552,42 @@ export class KarelRenderer {
       return null;
     }
 
-    const { wx, wy } = this.pixelToWorld(pixelX, pixelY);
-    const cellX = Math.floor(wx);
-    const cellY = Math.floor(wy);
+    const gx = (pixelX - offsetX) / cellSize; // 0 .. width
+    const gy = (offsetY + gridHeight - pixelY) / cellSize; // 0 .. height
 
-    const relX = wx - cellX; // 0..1 inside cell
-    const relY = wy - cellY; // 0..1 inside cell
+    const cellX = Math.min(this.world.width, Math.max(1, Math.floor(gx) + 1));
+    const cellY = Math.min(this.world.height, Math.max(1, Math.floor(gy) + 1));
 
-    const edgeThreshold = 0.22; // within 22% of cell edge
+    // When placing Karel or beepers, any click inside a cell targets that cell
+    if (toolMode === 'karel' || toolMode === 'beeper') {
+      return { type: 'CELL', x: cellX, y: cellY };
+    }
 
-    // Vertical wall test (East edge of cellX or West edge)
+    const relX = gx - (cellX - 1); // 0..1 inside cell (0 = West edge, 0.5 = center, 1 = East edge)
+    const relY = gy - (cellY - 1); // 0..1 inside cell (0 = South edge, 0.5 = center, 1 = North edge)
+
+    const edgeThreshold = toolMode === 'wall' ? 0.35 : 0.22;
+    const candidates = [];
+
+    // Vertical wall test (East edge of cellX or West edge of cellX)
     if (relX > 1 - edgeThreshold && cellX < this.world.width) {
-      return { type: 'WALL_V', x: cellX, y: cellY };
+      candidates.push({ dist: 1 - relX, hit: { type: 'WALL_V', x: cellX, y: cellY } });
     }
     if (relX < edgeThreshold && cellX > 1) {
-      return { type: 'WALL_V', x: cellX - 1, y: cellY };
+      candidates.push({ dist: relX, hit: { type: 'WALL_V', x: cellX - 1, y: cellY } });
     }
 
-    // Horizontal wall test (North edge of cellY or South edge)
+    // Horizontal wall test (North edge of cellY or South edge of cellY)
     if (relY > 1 - edgeThreshold && cellY < this.world.height) {
-      return { type: 'WALL_H', x: cellX, y: cellY };
+      candidates.push({ dist: 1 - relY, hit: { type: 'WALL_H', x: cellX, y: cellY } });
     }
     if (relY < edgeThreshold && cellY > 1) {
-      return { type: 'WALL_H', x: cellX, y: cellY - 1 };
+      candidates.push({ dist: relY, hit: { type: 'WALL_H', x: cellX, y: cellY - 1 } });
+    }
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => a.dist - b.dist);
+      return candidates[0].hit;
     }
 
     // Inside cell

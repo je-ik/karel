@@ -135,11 +135,11 @@ class KarelApp {
         guideWhileP1: 'Opakuje příkazy tak dlouho, dokud platí daná podmínka (např. dokud před Karlem není zeď):',
         guideIfTitle: '5. Podmínky a rozhodování (KDYŽ / JINAK)',
         guideIfP1: 'Umožňuje Karlovi rozhodnout se na základě toho, co vidí pod sebou nebo před sebou:',
-        guideProcTitle: '6. Vlastní příkazy (Procedury)',
-        guideProcP1: 'Naučte Karla nový povel! Definice začíná slovem PRIKAZ <nazev> a končí KONEC:',
+        guideProcTitle: '6. Vlastní příkazy a funkce (s parametry)',
+        guideProcP1: 'Naučte Karla nový povel nebo funkci! Definice začíná PRIKAZ <nazev>(param1, param2) nebo FUNKCE <nazev>(x) (návratová hodnota přes VRAT <výraz>) a končí KONEC:',
         guideSensorsTitle: '7. Dostupné podmínky a senzory',
-        guideVarTitle: '8. Proměnné, aritmetika a modulo (%)',
-        guideVarP1: 'Pro pokročilé algoritmy můžete používat proměnné s klíčovým slovem LET (rovnítko = je volitelné), aritmetiku (+, -, *, /, % nebo MOD) a porovnávat v podmínkách i cyklech (idx < 5, idx % 2 == 0):',
+        guideVarTitle: '8. Proměnné, kdeX/kdeY a matematické funkce',
+        guideVarP1: 'Používejte proměnné s LET, pozici Karla kdeX / kdeY (EN: whereX / whereY) a vestavěné matematické funkce: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
       },
       en: {
         cheatsheet: 'Cheatsheet',
@@ -178,18 +178,18 @@ class KarelApp {
         guideIntroP2: 'Primitive commands: STEP (move forward 1 corner), TURN_LEFT (rotate 90° counter-clockwise), PUT (place a beeper from bag), and PICK (pick up a beeper into bag).',
         guideStructTitle: '2. Program Structure (Syntax Rules)',
         guideStructP1: 'Commands are written on separate lines. Lines beginning with // are comments that Karel ignores.',
-        guideStructP2: 'All compound statements (REPEAT, WHILE, IF, and DEFINE) must always end with the keyword END.',
+        guideStructP2: 'All compound statements (REPEAT, WHILE, IF, DEFINE, and FUNCTION) must always end with the keyword END.',
         guideRepeatTitle: '3. Fixed Repeat Loop (REPEAT)',
         guideRepeatP1: 'When you want to repeat a sequence of commands a specific number of times (e.g. 4 times):',
         guideWhileTitle: '4. Conditional Loop (WHILE)',
         guideWhileP1: 'Repeats commands as long as the condition evaluates to true (e.g. while front is clear):',
         guideIfTitle: '5. Branching & Conditions (IF / ELSE)',
         guideIfP1: 'Allows Karel to make decisions based on what is in front or beneath:',
-        guideProcTitle: '6. Custom Procedures (DEFINE)',
-        guideProcP1: 'Teach Karel a new command! Begins with DEFINE <name> and ends with END:',
+        guideProcTitle: '6. Custom Procedures & Functions (with arguments)',
+        guideProcP1: 'Teach Karel a new command or function! Begins with DEFINE <name>(a, b) or FUNCTION <name>(x) (return value via RETURN <expr>) and ends with END:',
         guideSensorsTitle: '7. Available Conditions & Sensors',
-        guideVarTitle: '8. Variables, Arithmetic & Modulo (%)',
-        guideVarP1: 'For advanced algorithms, use variables with LET (equals = is optional), arithmetic (+, -, *, /, % or MOD), and comparisons in conditions and loops (idx < 5, idx % 2 == 0):',
+        guideVarTitle: '8. Variables, whereX/whereY & Math Functions',
+        guideVarP1: 'Use variables with LET, Karel coordinates whereX / whereY (CS: kdeX / kdeY), and built-in math functions: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
       },
     };
   }
@@ -234,8 +234,8 @@ class KarelApp {
         break;
       case 'proc':
         snippet = isCs
-          ? 'PRIKAZ MOJE-PROCEDURA\n  KROK\nKONEC\n'
-          : 'DEFINE MY_PROCEDURE\n  STEP\nEND\n';
+          ? 'PRIKAZ MOJE-PROCEDURA(n)\n  OPAKUJ n KRAT\n    KROK\n  KONEC\nKONEC\n'
+          : 'DEFINE MY_PROCEDURE(n)\n  REPEAT n TIMES\n    STEP\n  END\nEND\n';
         break;
       case 'let':
         snippet = isCs
@@ -276,8 +276,8 @@ class KarelApp {
         break;
       case 'proc':
         sample = isCs
-          ? 'PRIKAZ VPRAVO-BOK\n  OPAKUJ 3 KRAT\n    VLEVO-BOK\n  KONEC\nKONEC\n\n// Použití:\nKROK\nVPRAVO-BOK\nKROK\n'
-          : 'DEFINE TURN_RIGHT\n  REPEAT 3 TIMES\n    TURN_LEFT\n  END\nEND\n\n// Usage:\nSTEP\nTURN_RIGHT\nSTEP\n';
+          ? 'PRIKAZ JDI(kroky)\n  OPAKUJ kroky KRAT\n    KROK\n  KONEC\nKONEC\n\nFUNKCE VZDALENOST(cilX, cilY)\n  VRAT round(hypot(cilX - kdeX, cilY - kdeY))\nKONEC\n\n// Použití:\nJDI(3)\nLET d = VZDALENOST(10, 10)\n'
+          : 'DEFINE WALK(steps)\n  REPEAT steps TIMES\n    STEP\n  END\nEND\n\nFUNCTION DISTANCE(targetX, targetY)\n  RETURN round(hypot(targetX - whereX, targetY - whereY))\nEND\n\n// Usage:\nWALK(3)\nLET d = DISTANCE(10, 10)\n';
         break;
       case 'var':
         sample = isCs
@@ -527,18 +527,22 @@ class KarelApp {
     });
 
     // World resize
-    this.dom.resizeBtn.addEventListener('click', () => {
-      const w = parseInt(this.dom.worldW.value, 10);
-      const h = parseInt(this.dom.worldH.value, 10);
-      this.world.resize(w, h);
-      this.renderer.syncRobotImmediate();
-      this.updateHUD();
-      this.log(`Rozměry světa změněny na ${this.world.width} × ${this.world.height}`, 'info');
-    });
+    this.dom.resizeBtn.addEventListener('click', () => this.applyWorldResize(true));
+    this.dom.worldW.addEventListener('change', () => this.applyWorldResize(true));
+    this.dom.worldH.addEventListener('change', () => this.applyWorldResize(true));
+    const onResizeKey = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.applyWorldResize(true);
+      }
+    };
+    this.dom.worldW.addEventListener('keydown', onResizeKey);
+    this.dom.worldH.addEventListener('keydown', onResizeKey);
 
     // Clear world
     this.dom.clearWorldBtn.addEventListener('click', () => {
       this.interpreter.stop();
+      this.applyWorldResize(false);
       this.world.clear();
       this.renderer.syncRobotImmediate();
       this.updateHUD();
@@ -548,6 +552,7 @@ class KarelApp {
     // Random maze generator
     this.dom.mazeBtn.addEventListener('click', () => {
       this.interpreter.stop();
+      this.applyWorldResize(false);
       this.generateMaze();
       this.renderer.syncRobotImmediate();
       this.updateHUD();
@@ -572,6 +577,28 @@ class KarelApp {
     this.interpreter.on('action', (action, karel) => this.handleInterpreterAction(action, karel));
     this.interpreter.on('error', (err) => this.handleInterpreterError(err));
     this.interpreter.on('finish', (stats) => this.handleInterpreterFinish(stats));
+  }
+
+  applyWorldResize(logChange = true) {
+    const rawW = parseInt(this.dom.worldW.value, 10);
+    const rawH = parseInt(this.dom.worldH.value, 10);
+    const w = Number.isFinite(rawW) ? rawW : this.world.width;
+    const h = Number.isFinite(rawH) ? rawH : this.world.height;
+    if (w !== this.world.width || h !== this.world.height) {
+      this.interpreter.stop();
+      this.hideActiveLine();
+      this.world.resize(w, h);
+      this.dom.worldW.value = this.world.width;
+      this.dom.worldH.value = this.world.height;
+      this.renderer.syncRobotImmediate();
+      this.updateHUD();
+      if (logChange) {
+        this.log(`Rozměry světa změněny na ${this.world.width} × ${this.world.height}`, 'info');
+      }
+    } else {
+      this.dom.worldW.value = this.world.width;
+      this.dom.worldH.value = this.world.height;
+    }
   }
 
   updateAudioButton() {
@@ -677,6 +704,8 @@ class KarelApp {
       return;
     }
 
+    this.applyWorldResize(false);
+
     try {
       const ast = this.compile();
       this.interpreter.loadProgram(ast);
@@ -694,6 +723,7 @@ class KarelApp {
       this.interpreter.state === InterpreterState.FINISHED ||
       this.interpreter.state === InterpreterState.ERROR
     ) {
+      this.applyWorldResize(false);
       try {
         const ast = this.compile();
         this.interpreter.loadProgram(ast);
@@ -801,8 +831,15 @@ class KarelApp {
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
-    const hit = this.renderer.hitTest(px, py);
+    // Ensure layout metrics are up to date before hit-testing
+    this.renderer.computeLayout();
+    const hit = this.renderer.hitTest(px, py, this.currentTool);
     if (!hit) return;
+
+    if (this.interpreter.state !== InterpreterState.IDLE) {
+      this.interpreter.stop();
+      this.hideActiveLine();
+    }
 
     if (this.currentTool === 'beeper') {
       if (hit.type === 'CELL') {

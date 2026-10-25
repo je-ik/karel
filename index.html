@@ -175,24 +175,27 @@ KONEC
           </div>
         </div>
 
-        <!-- Section 6: Vlastní příkazy -->
+        <!-- Section 6: Vlastní příkazy a funkce -->
         <div class="guide-section">
-          <h3>⭐ <span data-i18n="guideProcTitle">6. Vlastní příkazy (Procedury)</span></h3>
+          <h3>⭐ <span data-i18n="guideProcTitle">6. Vlastní příkazy a funkce (s parametry)</span></h3>
           <p data-i18n="guideProcP1">
-            Naučte Karla nový povel! Definice začíná slovem <code>PRIKAZ &lt;nazev&gt;</code> a končí <code>KONEC</code>:
+            Naučte Karla nový povel nebo funkci! Definice začíná <code>PRIKAZ &lt;nazev&gt;(param1, param2)</code> nebo <code>FUNKCE &lt;nazev&gt;(x)</code> (návratová hodnota přes <code>VRAT &lt;výraz&gt;</code>) a končí <code>KONEC</code>:
           </p>
           <div class="guide-code-box">
 <button class="btn btn-insert-sample" data-sample="proc" data-i18n="insertSample">Vložit do editoru</button>
-PRIKAZ VPRAVO-BOK
-  OPAKUJ 3 KRAT
-    VLEVO-BOK
+PRIKAZ JDI(kroky)
+  OPAKUJ kroky KRAT
+    KROK
   KONEC
 KONEC
 
-// Nyní můžete příkaz použít kdekoli v programu:
-KROK
-VPRAVO-BOK
-KROK
+FUNKCE VZDALENOST(cilX, cilY)
+  VRAT round(hypot(cilX - kdeX, cilY - kdeY))
+KONEC
+
+// Použití:
+JDI(3)
+LET d = VZDALENOST(10, 10)
           </div>
         </div>
 
@@ -205,14 +208,15 @@ KROK
             <li><code>[JE / NENI] CIP</code> – je na políčku pod Karlem značka? (EN: <code>BEEPER</code>)</li>
             <li><code>[MA / NENI] KAPSA</code> – má Karel v kapse ještě značku? (EN: <code>BEEPER_IN_BAG</code>)</li>
             <li><code>[JE] SEVER / JIH / VYCHOD / ZAPAD</code> – směr otočení Karla. (EN: <code>FACING_NORTH / SOUTH / EAST / WEST</code>)</li>
+            <li><code>kdeX</code>, <code>kdeY</code> (EN: <code>whereX</code>, <code>whereY</code>) – aktuální souřadnice Karla (1..šířka, 1..výška).</li>
           </ul>
         </div>
 
-        <!-- Section 8: Proměnné a modulo -->
+        <!-- Section 8: Proměnné, pozice a matematické funkce -->
         <div class="guide-section">
-          <h3>🔢 <span data-i18n="guideVarTitle">8. Proměnné, aritmetika a modulo (%)</span></h3>
+          <h3>🔢 <span data-i18n="guideVarTitle">8. Proměnné, kdeX/kdeY a matematické funkce</span></h3>
           <p data-i18n="guideVarP1">
-            Pro pokročilé algoritmy můžete používat proměnné s klíčovým slovem <code>LET</code> (rovnítko <code>=</code> je volitelné), aritmetiku (<code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code> nebo <code>MOD</code>) a porovnávat v podmínkách i cyklech (<code>idx &lt; 5</code>, <code>idx % 2 == 0</code>):
+            Používejte proměnné s <code>LET</code>, pozici Karla <code>kdeX</code> / <code>kdeY</code> (EN: <code>whereX</code> / <code>whereY</code>) a vestavěné matematické funkce: <code>sin</code>, <code>cos</code>, <code>tan</code>, <code>sind</code>, <code>cosd</code>, <code>round</code>, <code>floor</code>, <code>ceil</code>, <code>abs</code>, <code>sqrt</code>, <code>pow(a, b)</code>, <code>min(a, b)</code>, <code>max(a, b)</code>, <code>hypot(dx, dy)</code>, <code>PI</code>:
           </p>
           <div class="guide-code-box">
 <button class="btn btn-insert-sample" data-sample="var" data-i18n="insertSample">Vložit do editoru</button>
@@ -297,9 +301,9 @@ KONEC
 
         <div class="toolbar-group">
           <label for="world-w" class="toolbar-label" data-i18n="gridSize">Mřížka:</label>
-          <input id="world-w" type="number" min="3" max="30" value="10" style="width: 50px;">
+          <input id="world-w" type="number" min="3" max="50" value="10" style="width: 64px; padding: 0.35rem 0.4rem; text-align: center;">
           <span>×</span>
-          <input id="world-h" type="number" min="3" max="30" value="10" style="width: 50px;">
+          <input id="world-h" type="number" min="3" max="50" value="10" style="width: 64px; padding: 0.35rem 0.4rem; text-align: center;">
           <button id="resize-btn" class="btn" data-i18n="resizeBtn">OK</button>
           <button id="maze-btn" class="btn" title="Vygenerovat náhodné bludiště" data-i18n="mazeBtn">🎲 Bludiště</button>
           <button id="clear-world-btn" class="btn" title="Vyčistit svět" data-i18n="clearBtn">Vyčistit</button>
@@ -377,7 +381,7 @@ KONEC
 
         <!-- Control Flow Card -->
         <div class="cheatsheet-card">
-          <h4>Řídicí struktury / Control Flow</h4>
+          <h4>Řídicí struktury & Funkce / Control Flow & Functions</h4>
           <table class="cheatsheet-table">
             <thead>
               <tr><th>Čeština</th><th>English</th></tr>
@@ -396,8 +400,12 @@ KONEC
                 <td><code>IF BEEPER<br>&nbsp;&nbsp;PICK<br>ELSE<br>&nbsp;&nbsp;PUT<br>END</code></td>
               </tr>
               <tr>
-                <td><code>PRIKAZ VLEVO<br>&nbsp;&nbsp;VLEVO-BOK<br>KONEC</code></td>
-                <td><code>DEFINE TURN_LEFT<br>&nbsp;&nbsp;TURN_LEFT<br>END</code></td>
+                <td><code>PRIKAZ JDI(n)<br>&nbsp;&nbsp;OPAKUJ n KRAT<br>&nbsp;&nbsp;&nbsp;&nbsp;KROK<br>&nbsp;&nbsp;KONEC<br>KONEC</code></td>
+                <td><code>DEFINE WALK(n)<br>&nbsp;&nbsp;REPEAT n TIMES<br>&nbsp;&nbsp;&nbsp;&nbsp;STEP<br>&nbsp;&nbsp;END<br>END</code></td>
+              </tr>
+              <tr>
+                <td><code>FUNKCE SOUCET(a, b)<br>&nbsp;&nbsp;VRAT a + b<br>KONEC</code></td>
+                <td><code>FUNCTION SUM(a, b)<br>&nbsp;&nbsp;RETURN a + b<br>END</code></td>
               </tr>
             </tbody>
           </table>
@@ -405,7 +413,7 @@ KONEC
 
         <!-- Conditions Card -->
         <div class="cheatsheet-card">
-          <h4>Podmínky a senzory / Conditions</h4>
+          <h4>Podmínky, pozice & matematika / Sensors, Position & Math</h4>
           <table class="cheatsheet-table">
             <thead>
               <tr><th>Čeština</th><th>English</th><th>Význam / Meaning</th></tr>
@@ -417,6 +425,9 @@ KONEC
               <tr><td><code>[MA/NENI] KAPSA</code></td><td><code>BEEPER_IN_BAG</code></td><td>Má Karel značku v kapse?</td></tr>
               <tr><td><code>[JE] SEVER / JIH</code></td><td><code>FACING_NORTH / SOUTH</code></td><td>Otočen na sever / jih?</td></tr>
               <tr><td><code>[JE] VYCHOD / ZAPAD</code></td><td><code>FACING_EAST / WEST</code></td><td>Otočen na východ / západ?</td></tr>
+              <tr><td><code>kdeX</code>, <code>kdeY</code></td><td><code>whereX</code>, <code>whereY</code></td><td>Souřadnice X a Y Karla</td></tr>
+              <tr><td><code>sin(x)</code>, <code>cos(x)</code>, <code>tan(x)</code></td><td><code>sind(deg)</code>, <code>cosd(deg)</code></td><td>Goniometrické funkce (rad / °)</td></tr>
+              <tr><td><code>round(x)</code>, <code>floor(x)</code>, <code>ceil(x)</code></td><td><code>abs(x)</code>, <code>sqrt(x)</code>, <code>pow(a,b)</code></td><td>Zaokrouhlení a matematika</td></tr>
             </tbody>
           </table>
         </div>
@@ -428,7 +439,7 @@ KONEC
             <li><strong>Značka (režim):</strong> Klikněte na políčko pro přidání značky (1 až 9+). Kliknutím s klávesou Shift značku odeberete.</li>
             <li><strong>Zeď (režim):</strong> Klikněte na mřížkovou čáru mezi dvěma políčky pro postavení nebo zbourání zdi.</li>
             <li><strong>Karel (režim):</strong> Klikněte na políčko pro přemístění Karla; opakovaným kliknutím Karla otočíte!</li>
-            <li><strong>Bludiště:</strong> Tlačítko 🎲 vygeneruje náhodné průchozí bludiště.</li>
+            <li><strong>Mřížka (až 20×20+):</strong> Změňte rozměr mřížky (např. 20 × 20) v horní liště světa.</li>
           </ul>
         </div>
 

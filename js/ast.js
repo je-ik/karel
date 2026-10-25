@@ -18,17 +18,34 @@ export class ProgramNode extends ASTNode {
 }
 
 export class ProcedureDefNode extends ASTNode {
-  constructor(name, body = [], loc) {
+  constructor(name, body = [], loc, params = []) {
     super('ProcedureDef', loc);
     this.name = name;
     this.body = body;
+    this.params = params;
   }
 }
 
 export class CallNode extends ASTNode {
-  constructor(name, loc) {
+  constructor(name, loc, args = []) {
     super('Call', loc);
     this.name = name;
+    this.args = args;
+  }
+}
+
+export class ReturnNode extends ASTNode {
+  constructor(expr, loc) {
+    super('Return', loc);
+    this.expr = expr;
+  }
+}
+
+export class FuncCallNode extends ASTNode {
+  constructor(name, args = [], loc) {
+    super('FuncCall', loc);
+    this.name = name;
+    this.args = args;
   }
 }
 

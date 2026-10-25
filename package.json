@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.js",
-    "test": "node test/test_karel.js && node test/test_examples.js && node test/test_runtime.js && node test/test_variables.js && node test/test_procedures.js"
+    "test": "node test/test_karel.js && node test/test_examples.js && node test/test_runtime.js && node test/test_variables.js && node test/test_procedures.js && node test/test_functions_and_grid.js"
   },
   "keywords": [
     "karel",

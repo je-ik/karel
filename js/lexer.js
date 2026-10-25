@@ -22,6 +22,7 @@ export const TokenType = {
   KW_ELSE: 'KW_ELSE',
   KW_END: 'KW_END',
   KW_DEFINE: 'KW_DEFINE',
+  KW_RETURN: 'KW_RETURN',
   KW_IS: 'KW_IS',
   KW_NOT: 'KW_NOT',
   KW_LET: 'KW_LET',
@@ -61,6 +62,7 @@ export const TokenType = {
   RBRACE: 'RBRACE',
   SEMICOLON: 'SEMICOLON',
   COLON: 'COLON',
+  COMMA: 'COMMA',
 
   EOF: 'EOF',
 };
@@ -143,10 +145,18 @@ const KEYWORD_MAP = {
   'STOP': TokenType.KW_END,
 
   'PRIKAZ': TokenType.KW_DEFINE,
+  'FUNKCE': TokenType.KW_DEFINE,
+  'FCE': TokenType.KW_DEFINE,
   'DEFINE': TokenType.KW_DEFINE,
   'FUNCTION': TokenType.KW_DEFINE,
+  'FUNC': TokenType.KW_DEFINE,
+  'DEF': TokenType.KW_DEFINE,
   'PROCEDURE': TokenType.KW_DEFINE,
   'VOID': TokenType.KW_DEFINE,
+
+  'VRAT': TokenType.KW_RETURN,
+  'RETURN': TokenType.KW_RETURN,
+  'VYSLEDEK': TokenType.KW_RETURN,
 
   'JE': TokenType.KW_IS,
   'IS': TokenType.KW_IS,
@@ -264,17 +274,23 @@ export class Lexer {
       const startLine = this.line;
       const startCol = this.col;
 
-      // Numbers (e.g. 5 or 10-krat)
+      // Numbers (e.g. 5, 3.14, or 10-krat)
       if (/[0-9]/.test(ch)) {
         let numStr = '';
         while (this.cursor < this.source.length && /[0-9]/.test(this.peek())) {
           numStr += this.advance();
         }
-        tokens.push(new Token(TokenType.NUMBER, parseInt(numStr, 10), startLine, startCol, numStr));
+        if (this.peek() === '.' && /[0-9]/.test(this.peekNext() || '')) {
+          numStr += this.advance(); // consume '.'
+          while (this.cursor < this.source.length && /[0-9]/.test(this.peek())) {
+            numStr += this.advance();
+          }
+        }
+        tokens.push(new Token(TokenType.NUMBER, parseFloat(numStr), startLine, startCol, numStr));
 
         // In Czech Karel, users often write "5-KRAT" or "5KRAT"
-        if (this.peek() === '-') {
-          this.advance(); // skip dash
+        if (this.peek() === '-' && /[kK]/.test(this.peekNext() || '')) {
+          this.advance(); // skip dash before KRAT
         }
         continue;
       }
@@ -334,6 +350,11 @@ export class Lexer {
       if (ch === ':') {
         this.advance();
         tokens.push(new Token(TokenType.COLON, ':', startLine, startCol));
+        continue;
+      }
+      if (ch === ',') {
+        this.advance();
+        tokens.push(new Token(TokenType.COMMA, ',', startLine, startCol));
         continue;
       }
       // Operators & delimiters

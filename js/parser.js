@@ -8,6 +8,8 @@ import {
   ProgramNode,
   ProcedureDefNode,
   CallNode,
+  ReturnNode,
+  FuncCallNode,
   CommandNode,
   RepeatNode,
   WhileNode,
@@ -20,6 +22,16 @@ import {
   VariableNode,
   ExprConditionNode
 } from './ast.js';
+
+const UNARY_MATH_FUNCS = new Set([
+  'SIN', 'COS', 'TAN', 'TG', 'ASIN', 'ACOS', 'ATAN', 'ATG',
+  'SIND', 'COSD', 'TAND', 'SINDEG', 'COSDEG', 'TANDEG',
+  'RAD', 'TORAD', 'RADIANS', 'DEG', 'TODEG', 'DEGREES',
+  'ROUND', 'ZAOKROUHLI', 'FLOOR', 'PODLAHA', 'CELACAST',
+  'CEIL', 'CEILING', 'STROP', 'TRUNC', 'INT', 'FRAC',
+  'ABS', 'SQRT', 'ODMOCNINA', 'CBRT', 'EXP', 'LOG', 'LN', 'LOG10', 'LOG2',
+  'SIGN', 'SGN', 'ZNAMENKO',
+]);
 
 export class Parser {
   constructor(tokens) {
@@ -109,9 +121,10 @@ export class Parser {
   }
 
   /**
-   * Parse procedure definition:
-   * PRIKAZ <NAME> ... KONEC
-   * or DEFINE <NAME>() { ... }
+   * Parse procedure or function definition:
+   * PRIKAZ <NAME>[(a, b) | a b] ... KONEC
+   * FUNKCE <NAME>(a, b) ... VRAT <expr> ... KONEC
+   * or DEFINE <NAME>(a, b) { ... }
    */
   parseProcedure() {
     const defToken = this.advance(); // consume KW_DEFINE
@@ -121,14 +134,32 @@ export class Parser {
       name = this.advance().value;
     } else {
       throw new Error(
-        `Očekáván název příkazu / Expected procedure name (řádek ${token.line}, sloupec ${token.col})`
+        `Očekáván název příkazu nebo funkce / Expected procedure or function name (řádek ${token.line}, sloupec ${token.col})`
       );
     }
     const loc = { line: defToken.line, col: defToken.col };
+    const params = [];
 
-    // Optional ()
+    // Optional parameters: either (a, b) or space-separated on the same header line
     if (this.match(TokenType.LPAREN)) {
+      while (!this.isAtEnd() && !this.check(TokenType.RPAREN)) {
+        const paramToken = this.consume(
+          TokenType.IDENTIFIER,
+          'Očekáván název parametru / Expected parameter name'
+        );
+        params.push(paramToken.value);
+        this.match(TokenType.COMMA);
+      }
       this.consume(TokenType.RPAREN, "Očekávána ')' za parametry / Expected ')'");
+    } else {
+      while (
+        !this.isAtEnd() &&
+        this.peek().line === defToken.line &&
+        this.check(TokenType.IDENTIFIER)
+      ) {
+        params.push(this.advance().value);
+        this.match(TokenType.COMMA);
+      }
     }
 
     // Optional colon or '{'
@@ -137,7 +168,7 @@ export class Parser {
 
     const body = this.parseStatementBlock(hasBrace ? 'BRACE' : 'END');
 
-    return new ProcedureDefNode(name, body, loc);
+    return new ProcedureDefNode(name, body, loc, params);
   }
 
   /**
@@ -194,6 +225,37 @@ export class Parser {
     const token = this.peek();
     const loc = { line: token.line, col: token.col };
 
+    // Return statement: VRAT [<expr>] / RETURN [<expr>]
+    if (this.match(TokenType.KW_RETURN)) {
+      this.match(TokenType.ASSIGN);
+      let expr = null;
+      if (
+        !this.isAtEnd() &&
+        this.peek().line === loc.line &&
+        !this.check(TokenType.SEMICOLON) &&
+        !this.check(TokenType.RBRACE) &&
+        !this.check(TokenType.KW_END) &&
+        !this.check(TokenType.KW_ELSE)
+      ) {
+        expr = this.parseExpression();
+        if (
+          expr.type === 'Variable' &&
+          !this.isAtEnd() &&
+          this.peek().line === loc.line &&
+          !this.check(TokenType.SEMICOLON) &&
+          !this.check(TokenType.RBRACE) &&
+          !this.check(TokenType.KW_END) &&
+          !this.check(TokenType.KW_ELSE)
+        ) {
+          const args = this.parseRemainingLineArgs(loc.line);
+          expr = new FuncCallNode(expr.name, args, expr.loc);
+        }
+      } else {
+        expr = new NumberLiteralNode(0, loc);
+      }
+      return new ReturnNode(expr, loc);
+    }
+
     // Variable assignment: LET <name> [=] <expr>
     if (this.match(TokenType.KW_LET)) {
       const nameToken = this.consume(
@@ -202,7 +264,19 @@ export class Parser {
       );
       // Optional '='
       this.match(TokenType.ASSIGN);
-      const expr = this.parseExpression();
+      let expr = this.parseExpression();
+      if (
+        expr.type === 'Variable' &&
+        !this.isAtEnd() &&
+        this.peek().line === loc.line &&
+        !this.check(TokenType.SEMICOLON) &&
+        !this.check(TokenType.RBRACE) &&
+        !this.check(TokenType.KW_END) &&
+        !this.check(TokenType.KW_ELSE)
+      ) {
+        const args = this.parseRemainingLineArgs(loc.line);
+        expr = new FuncCallNode(expr.name, args, expr.loc);
+      }
       return new AssignNode(nameToken.value, expr, loc);
     }
 
@@ -259,18 +333,61 @@ export class Parser {
       if (nextToken && nextToken.type === TokenType.ASSIGN) {
         const idToken = this.advance();
         this.advance(); // consume '='
-        const expr = this.parseExpression();
+        let expr = this.parseExpression();
+        if (
+          expr.type === 'Variable' &&
+          !this.isAtEnd() &&
+          this.peek().line === loc.line &&
+          !this.check(TokenType.SEMICOLON) &&
+          !this.check(TokenType.RBRACE) &&
+          !this.check(TokenType.KW_END) &&
+          !this.check(TokenType.KW_ELSE)
+        ) {
+          const args = this.parseRemainingLineArgs(loc.line);
+          expr = new FuncCallNode(expr.name, args, expr.loc);
+        }
         return new AssignNode(idToken.value, expr, loc);
       }
       const idToken = this.advance();
-      this.consumeOptionalParens();
-      return new CallNode(idToken.value, loc);
+      const args = this.parseCallArgs(idToken.line);
+      return new CallNode(idToken.value, loc, args);
     }
 
     // If unexpected token:
     throw new Error(
       `Neočekávaný příkaz '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
     );
+  }
+
+  parseCallArgs(line) {
+    const args = [];
+    if (this.match(TokenType.LPAREN)) {
+      while (!this.isAtEnd() && !this.check(TokenType.RPAREN)) {
+        args.push(this.parseExpression());
+        this.match(TokenType.COMMA);
+      }
+      this.consume(TokenType.RPAREN, "Očekávána ')' za argumenty / Expected ')' after arguments");
+      return args;
+    }
+    return this.parseRemainingLineArgs(line);
+  }
+
+  parseRemainingLineArgs(line) {
+    const args = [];
+    while (
+      !this.isAtEnd() &&
+      this.peek().line === line &&
+      !this.check(TokenType.SEMICOLON) &&
+      !this.check(TokenType.RBRACE) &&
+      !this.check(TokenType.KW_END) &&
+      !this.check(TokenType.KW_ELSE) &&
+      !this.check(TokenType.KW_THEN) &&
+      !this.check(TokenType.KW_TIMES)
+    ) {
+      args.push(this.parseExpression());
+      this.match(TokenType.COMMA);
+    }
+    return args;
   }
 
   consumeOptionalParens() {
@@ -402,6 +519,32 @@ export class Parser {
     }
 
     if (this.match(TokenType.IDENTIFIER)) {
+      if (this.match(TokenType.LPAREN)) {
+        const args = [];
+        while (!this.isAtEnd() && !this.check(TokenType.RPAREN)) {
+          args.push(this.parseExpression());
+          this.match(TokenType.COMMA);
+        }
+        this.consume(
+          TokenType.RPAREN,
+          "Očekávána ')' za argumenty funkce / Expected ')' after function arguments"
+        );
+        return new FuncCallNode(token.value, args, loc);
+      }
+
+      const canon = canonicalize(token.value);
+      if (
+        UNARY_MATH_FUNCS.has(canon) &&
+        !this.isAtEnd() &&
+        this.peek().line === token.line &&
+        (this.check(TokenType.NUMBER) ||
+          this.check(TokenType.IDENTIFIER) ||
+          this.check(TokenType.LPAREN))
+      ) {
+        const arg = this.parseUnary();
+        return new FuncCallNode(token.value, [arg], loc);
+      }
+
       return new VariableNode(token.value, loc);
     }
 
