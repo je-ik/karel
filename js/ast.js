@@ -131,6 +131,25 @@ export class NumberLiteralNode extends ASTNode {
   }
 }
 
+export class StringLiteralNode extends ASTNode {
+  /**
+   * parts: array of { type: 'text', value: string } | { type: 'expr', expr: ASTNode, formatSpec?: string, rawExpr?: string }
+   */
+  constructor(text, parts = [], isFString = false, loc) {
+    super('StringLiteral', loc);
+    this.text = text;
+    this.parts = parts;
+    this.isFString = isFString;
+  }
+}
+
+export class PrintNode extends ASTNode {
+  constructor(args = [], loc) {
+    super('Print', loc);
+    this.args = args;
+  }
+}
+
 export class VariableNode extends ASTNode {
   constructor(name, loc) {
     super('Variable', loc);

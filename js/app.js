@@ -60,6 +60,9 @@ class KarelApp {
 
       consoleOutput: document.getElementById('console-output'),
       clearConsoleBtn: document.getElementById('clear-console-btn'),
+      filterAllBtn: document.getElementById('filter-all-btn'),
+      filterPrintBtn: document.getElementById('filter-print-btn'),
+      debugVars: document.getElementById('debug-vars'),
 
       // Left pane tabs and views
       tabEditor: document.getElementById('tab-editor'),
@@ -108,7 +111,10 @@ class KarelApp {
         resizeBtn: 'OK',
         mazeBtn: '🎲 Bludiště',
         clearBtn: 'Vyčistit',
-        consoleTitle: 'Konzole & Hlášení:',
+        consoleTitle: 'Debug Konzole:',
+        filterAll: 'Vše',
+        filterPrint: 'Výpisy (NAPIS/PRINT)',
+        clearConsole: 'Smazat',
         statusIdle: 'PŘIPRAVEN',
         statusRunning: 'BĚŽÍ',
         statusPaused: 'POZASTAVEN',
@@ -140,6 +146,8 @@ class KarelApp {
         guideSensorsTitle: '7. Dostupné podmínky a senzory',
         guideVarTitle: '8. Proměnné, kdeX/kdeY a matematické funkce',
         guideVarP1: 'Používejte proměnné s LET, pozici Karla kdeX / kdeY (EN: whereX / whereY) a vestavěné matematické funkce: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
+        guidePrintTitle: '9. Debug konzole a výpis (NAPIS / PRINT + Python f"...")',
+        guidePrintP1: 'Pro ladění programu použijte příkaz NAPIS (nebo VYPIS / PRINT). Podporuje Python f-string interpolaci f"Pozice: [{kdeX}, {kdeY}], sin={sin(PI/4):.2f}, {idx=}":',
       },
       en: {
         cheatsheet: 'Cheatsheet',
@@ -158,7 +166,10 @@ class KarelApp {
         resizeBtn: 'OK',
         mazeBtn: '🎲 Maze',
         clearBtn: 'Clear',
-        consoleTitle: 'Console & Logs:',
+        consoleTitle: 'Debug Console:',
+        filterAll: 'All',
+        filterPrint: 'Prints (PRINT/NAPIS)',
+        clearConsole: 'Clear',
         statusIdle: 'READY',
         statusRunning: 'RUNNING',
         statusPaused: 'PAUSED',
@@ -190,6 +201,8 @@ class KarelApp {
         guideSensorsTitle: '7. Available Conditions & Sensors',
         guideVarTitle: '8. Variables, whereX/whereY & Math Functions',
         guideVarP1: 'Use variables with LET, Karel coordinates whereX / whereY (CS: kdeX / kdeY), and built-in math functions: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
+        guidePrintTitle: '9. Debug Console & Printing (PRINT / NAPIS + Python f"...")',
+        guidePrintP1: 'Use PRINT (or NAPIS) to output debug messages to the console. Supports Python f-string interpolation f"Pos: [{whereX}, {whereY}], sin={sin(PI/4):.2f}, {idx=}":',
       },
     };
   }
@@ -242,6 +255,11 @@ class KarelApp {
           ? 'LET idx = 0\n'
           : 'LET idx = 0\n';
         break;
+      case 'print':
+        snippet = isCs
+          ? 'NAPIS f"Karel je na [{kdeX}, {kdeY}]"\n'
+          : 'PRINT f"Karel is at [{whereX}, {whereY}]"\n';
+        break;
     }
 
     this.switchTab('editor');
@@ -283,6 +301,11 @@ class KarelApp {
         sample = isCs
           ? '// Kladení značek na každé sudé políčko:\nLET idx 0\n\nDOKUD NENI ZED\n  KDYZ idx % 2 == 0\n    POLOZ\n  KONEC\n  KROK\n  LET idx idx + 1\nKONEC\n\nKDYZ idx % 2 == 0\n  POLOZ\nKONEC\n'
           : '// Placing beepers on alternating tiles:\nLET idx 0\n\nWHILE FRONT_IS_CLEAR\n  IF idx % 2 == 0\n    PUT\n  END\n  STEP\n  LET idx idx + 1\nEND\n\nIF idx % 2 == 0\n  PUT\nEND\n';
+        break;
+      case 'print':
+        sample = isCs
+          ? 'LET krokCislo = 0\nOPAKUJ 4 KRAT\n  KROK\n  LET krokCislo = krokCislo + 1\n  NAPIS f"Krok {krokCislo}: Karel je na [{kdeX}, {kdeY}], vzdálenost={hypot(kdeX, kdeY):.2f}"\nKONEC\n'
+          : 'LET stepNum = 0\nREPEAT 4 TIMES\n  STEP\n  LET stepNum = stepNum + 1\n  PRINT f"Step {stepNum}: Karel is at [{whereX}, {whereY}], dist={hypot(whereX, whereY):.2f}"\nEND\n';
         break;
     }
 
@@ -329,14 +352,16 @@ class KarelApp {
         const labels = {
           step: '+ KROK', left: '+ VLEVO', right: '+ VPRAVO',
           put: '+ POLOŽ', pick: '+ ZVEDNI', repeat: '+ OPAKUJ',
-          while: '+ DOKUD', if: '+ KDYŽ', proc: '+ PŘÍKAZ'
+          while: '+ DOKUD', if: '+ KDYŽ', proc: '+ PŘÍKAZ',
+          let: '+ LET', print: '+ NAPIŠ'
         };
         if (labels[ins]) btn.textContent = labels[ins];
       } else {
         const labels = {
           step: '+ STEP', left: '+ LEFT', right: '+ RIGHT',
           put: '+ PUT', pick: '+ PICK', repeat: '+ REPEAT',
-          while: '+ WHILE', if: '+ IF', proc: '+ DEFINE'
+          while: '+ WHILE', if: '+ IF', proc: '+ DEFINE',
+          let: '+ LET', print: '+ PRINT'
         };
         if (labels[ins]) btn.textContent = labels[ins];
       }
@@ -559,10 +584,22 @@ class KarelApp {
       this.log('Vygenerováno náhodné bludiště / Generated random maze', 'info');
     });
 
-    // Clear console
+    // Clear console & Console filter buttons
     this.dom.clearConsoleBtn.addEventListener('click', () => {
       this.dom.consoleOutput.innerHTML = '';
     });
+    if (this.dom.filterAllBtn && this.dom.filterPrintBtn) {
+      this.dom.filterAllBtn.addEventListener('click', () => {
+        this.dom.filterAllBtn.classList.add('active');
+        this.dom.filterPrintBtn.classList.remove('active');
+        this.dom.consoleOutput.classList.remove('filter-print-only');
+      });
+      this.dom.filterPrintBtn.addEventListener('click', () => {
+        this.dom.filterPrintBtn.classList.add('active');
+        this.dom.filterAllBtn.classList.remove('active');
+        this.dom.consoleOutput.classList.add('filter-print-only');
+      });
+    }
 
     // Canvas click interaction for world editing
     this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
@@ -575,6 +612,8 @@ class KarelApp {
     this.interpreter.on('stateChange', (state) => this.handleStateChange(state));
     this.interpreter.on('highlightLine', (line) => this.highlightLine(line));
     this.interpreter.on('action', (action, karel) => this.handleInterpreterAction(action, karel));
+    this.interpreter.on('log', (msg, loc) => this.logPrint(msg, loc));
+    this.interpreter.on('variableChange', () => this.updateDebugVars());
     this.interpreter.on('error', (err) => this.handleInterpreterError(err));
     this.interpreter.on('finish', (stats) => this.handleInterpreterFinish(stats));
   }
@@ -970,6 +1009,57 @@ class KarelApp {
 
     this.dom.hudBag.textContent = k.bag === Infinity ? '∞' : String(k.bag);
     this.dom.hudCellBeepers.textContent = String(this.world.getBeepers(k.x, k.y));
+    this.updateDebugVars();
+  }
+
+  updateDebugVars() {
+    if (!this.dom.debugVars) return;
+    this.dom.debugVars.innerHTML = '';
+    const entries = [];
+    for (const [k, v] of this.interpreter.variables.entries()) {
+      entries.push([k, v]);
+    }
+    if (this.interpreter.callStack && this.interpreter.callStack.length > 0) {
+      const top = this.interpreter.callStack[this.interpreter.callStack.length - 1];
+      for (const [k, v] of top.locals.entries()) {
+        entries.push([`${top.name}.${k}`, v]);
+      }
+    }
+    for (const [name, val] of entries) {
+      const badge = document.createElement('span');
+      badge.className = 'debug-var-badge';
+      const formatted =
+        typeof val === 'number' && !Number.isInteger(val)
+          ? Number(val.toPrecision(6))
+          : val;
+      badge.textContent = `${name}=${formatted}`;
+      this.dom.debugVars.appendChild(badge);
+    }
+  }
+
+  logPrint(message, loc) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry log-print';
+
+    const time = new Date().toLocaleTimeString();
+    if (loc && loc.line) {
+      const lineTag = document.createElement('span');
+      lineTag.className = 'log-line-tag';
+      lineTag.textContent = `[${time} | ř.${loc.line}]`;
+      entry.appendChild(lineTag);
+    } else {
+      const lineTag = document.createElement('span');
+      lineTag.className = 'log-line-tag';
+      lineTag.textContent = `[${time}]`;
+      entry.appendChild(lineTag);
+    }
+
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = `🖨️ ${message}`;
+    entry.appendChild(msgSpan);
+
+    this.dom.consoleOutput.appendChild(entry);
+    this.dom.consoleOutput.scrollTop = this.dom.consoleOutput.scrollHeight;
   }
 
   log(message, type = 'info') {

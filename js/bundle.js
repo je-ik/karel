@@ -139,6 +139,25 @@ class NumberLiteralNode extends ASTNode {
   }
 }
 
+class StringLiteralNode extends ASTNode {
+  /**
+   * parts: array of { type: 'text', value: string } | { type: 'expr', expr: ASTNode, formatSpec?: string, rawExpr?: string }
+   */
+  constructor(text, parts = [], isFString = false, loc) {
+    super('StringLiteral', loc);
+    this.text = text;
+    this.parts = parts;
+    this.isFString = isFString;
+  }
+}
+
+class PrintNode extends ASTNode {
+  constructor(args = [], loc) {
+    super('Print', loc);
+    this.args = args;
+  }
+}
+
 class VariableNode extends ASTNode {
   constructor(name, loc) {
     super('Variable', loc);
@@ -180,6 +199,7 @@ const TokenType = {
   KW_END: 'KW_END',
   KW_DEFINE: 'KW_DEFINE',
   KW_RETURN: 'KW_RETURN',
+  KW_PRINT: 'KW_PRINT',
   KW_IS: 'KW_IS',
   KW_NOT: 'KW_NOT',
   KW_LET: 'KW_LET',
@@ -210,6 +230,7 @@ const TokenType = {
 
   // Literals & Identifiers
   NUMBER: 'NUMBER',
+  STRING: 'STRING',
   IDENTIFIER: 'IDENTIFIER',
 
   // Delimiters (optional in classic Karel, supported for C/Python style)
@@ -315,6 +336,13 @@ const KEYWORD_MAP = {
   'RETURN': TokenType.KW_RETURN,
   'VYSLEDEK': TokenType.KW_RETURN,
 
+  'NAPIS': TokenType.KW_PRINT,
+  'VYPIS': TokenType.KW_PRINT,
+  'TISKNI': TokenType.KW_PRINT,
+  'PRINT': TokenType.KW_PRINT,
+  'CONSOLELOG': TokenType.KW_PRINT,
+  'ECHO': TokenType.KW_PRINT,
+
   'JE': TokenType.KW_IS,
   'IS': TokenType.KW_IS,
 
@@ -394,6 +422,55 @@ class Lexer {
     return ch;
   }
 
+  readString(quoteChar, startLine, startCol, isFString = false) {
+    let raw = isFString ? `f${quoteChar}` : quoteChar;
+    this.advance(); // consume opening quote
+    let str = '';
+
+    while (this.cursor < this.source.length) {
+      const ch = this.peek();
+      if (ch === quoteChar) {
+        raw += this.advance();
+        return new Token(
+          TokenType.STRING,
+          { text: str, isFString },
+          startLine,
+          startCol,
+          raw
+        );
+      }
+      if (ch === '\\') {
+        raw += this.advance(); // consume '\'
+        if (this.cursor >= this.source.length) break;
+        const esc = this.advance();
+        raw += esc;
+        switch (esc) {
+          case 'n': str += '\n'; break;
+          case 't': str += '\t'; break;
+          case 'r': str += '\r'; break;
+          case '\\': str += '\\'; break;
+          case '"': str += '"'; break;
+          case "'": str += "'"; break;
+          case '{': str += '{{'; break;
+          case '}': str += '}}'; break;
+          default: str += esc; break;
+        }
+        continue;
+      }
+      if (ch === '\n') {
+        throw new Error(
+          `Neukončený řetězec / Unterminated string literal at line ${startLine}, col ${startCol}`
+        );
+      }
+      raw += ch;
+      str += this.advance();
+    }
+
+    throw new Error(
+      `Neukončený řetězec / Unterminated string literal at line ${startLine}, col ${startCol}`
+    );
+  }
+
   tokenize() {
     const tokens = [];
     while (this.cursor < this.source.length) {
@@ -430,6 +507,20 @@ class Lexer {
 
       const startLine = this.line;
       const startCol = this.col;
+
+      // Python f-string: f"..." or f'...' or F"..." or F'...'
+      if ((ch === 'f' || ch === 'F') && (this.peekNext() === '"' || this.peekNext() === "'")) {
+        this.advance(); // consume 'f' / 'F'
+        const quote = this.peek();
+        tokens.push(this.readString(quote, startLine, startCol, true));
+        continue;
+      }
+
+      // Quoted string literal: "..." or '...'
+      if (ch === '"' || ch === "'") {
+        tokens.push(this.readString(ch, startLine, startCol, false));
+        continue;
+      }
 
       // Numbers (e.g. 5, 3.14, or 10-krat)
       if (/[0-9]/.test(ch)) {
@@ -1157,6 +1248,12 @@ class Parser {
       return new ReturnNode(expr, loc);
     }
 
+    // Print / debug output statement: NAPIS / VYPIS / PRINT <args...>
+    if (this.match(TokenType.KW_PRINT)) {
+      const args = this.parseCallArgs(loc.line);
+      return new PrintNode(args, loc);
+    }
+
     // Variable assignment: LET <name> [=] <expr>
     if (this.match(TokenType.KW_LET)) {
       const nameToken = this.consume(
@@ -1411,12 +1508,161 @@ class Parser {
     return this.parsePrimary();
   }
 
+  /**
+   * Parse Python-style f-string interpolation `{expr}` or `{expr:.2f}` or `{expr=}` inside string literals.
+   * Supports escaped braces `{{` and `}}`.
+   */
+  parseInterpolatedString(strVal, loc) {
+    const text = typeof strVal === 'object' ? strVal.text : String(strVal);
+    const isFString = typeof strVal === 'object' ? Boolean(strVal.isFString) : false;
+    const parts = [];
+    let curText = '';
+    let i = 0;
+
+    while (i < text.length) {
+      const ch = text[i];
+
+      if (ch === '{') {
+        if (text[i + 1] === '{') {
+          curText += '{';
+          i += 2;
+          continue;
+        }
+        // Find matching closing '}'
+        let depth = 1;
+        let j = i + 1;
+        let inQuote = null;
+        while (j < text.length && depth > 0) {
+          const c = text[j];
+          if (inQuote) {
+            if (c === '\\') {
+              j += 2;
+              continue;
+            }
+            if (c === inQuote) inQuote = null;
+          } else {
+            if (c === '"' || c === "'") inQuote = c;
+            else if (c === '{') depth++;
+            else if (c === '}') depth--;
+          }
+          if (depth > 0) j++;
+        }
+
+        if (depth !== 0) {
+          if (isFString) {
+            throw new Error(
+              `Neukončená složená závorka '{' v f-stringu / Unclosed '{' in f-string (řádek ${loc.line})`
+            );
+          }
+          curText += ch;
+          i++;
+          continue;
+        }
+
+        const rawInside = text.slice(i + 1, j);
+        const trimmedInside = rawInside.trim();
+        if (!trimmedInside) {
+          if (isFString) {
+            throw new Error(
+              `Prázdný výraz '{}' v f-stringu / Empty expression '{}' in f-string (řádek ${loc.line})`
+            );
+          }
+          curText += '{}';
+          i = j + 1;
+          continue;
+        }
+
+        // Check for Python format specifier `:...` at top-level
+        let exprSource = rawInside;
+        let formatSpec = '';
+        let parenDepth = 0;
+        for (let k = 0; k < rawInside.length; k++) {
+          const kc = rawInside[k];
+          if (kc === '(') parenDepth++;
+          else if (kc === ')') parenDepth--;
+          else if (kc === ':' && parenDepth === 0) {
+            exprSource = rawInside.slice(0, k);
+            formatSpec = rawInside.slice(k + 1).trim();
+            break;
+          }
+        }
+
+        // Check for Python 3.8+ debug self-documenting expression `f"{x=}"`
+        let debugPrefix = '';
+        const trimmedExpr = exprSource.trim();
+        if (
+          trimmedExpr.endsWith('=') &&
+          !trimmedExpr.endsWith('==') &&
+          !trimmedExpr.endsWith('!=') &&
+          !trimmedExpr.endsWith('<=') &&
+          !trimmedExpr.endsWith('>=')
+        ) {
+          debugPrefix = exprSource; // e.g. "x=" or "kdeX + 1 = "
+          exprSource = trimmedExpr.slice(0, -1).trim();
+        }
+
+        try {
+          const subLexer = new Lexer(exprSource);
+          const subTokens = subLexer.tokenize();
+          // Fix line numbers on subTokens for accurate error messages
+          for (const st of subTokens) {
+            st.line = loc.line;
+          }
+          const subParser = new Parser(subTokens);
+          const exprAst = subParser.parseExpression();
+
+          if (curText || debugPrefix) {
+            parts.push({ type: 'text', value: curText + debugPrefix });
+            curText = '';
+          }
+          parts.push({
+            type: 'expr',
+            expr: exprAst,
+            formatSpec,
+            rawExpr: exprSource.trim(),
+          });
+          i = j + 1;
+          continue;
+        } catch (err) {
+          if (isFString) {
+            throw new Error(
+              `Chyba ve výrazu '{${rawInside}}' v f-stringu na řádku ${loc.line}: ${err.message}`
+            );
+          }
+          // If it's a normal string and `{...}` isn't a valid expression, treat literally
+          curText += `{${rawInside}}`;
+          i = j + 1;
+          continue;
+        }
+      }
+
+      if (ch === '}' && text[i + 1] === '}') {
+        curText += '}';
+        i += 2;
+        continue;
+      }
+
+      curText += ch;
+      i++;
+    }
+
+    if (curText || parts.length === 0) {
+      parts.push({ type: 'text', value: curText });
+    }
+
+    return new StringLiteralNode(text, parts, isFString, loc);
+  }
+
   parsePrimary() {
     const token = this.peek();
     const loc = { line: token.line, col: token.col };
 
     if (this.match(TokenType.NUMBER)) {
       return new NumberLiteralNode(token.value, loc);
+    }
+
+    if (this.match(TokenType.STRING)) {
+      return this.parseInterpolatedString(token.value, loc);
     }
 
     if (this.match(TokenType.IDENTIFIER)) {
@@ -1439,6 +1685,7 @@ class Parser {
         !this.isAtEnd() &&
         this.peek().line === token.line &&
         (this.check(TokenType.NUMBER) ||
+          this.check(TokenType.STRING) ||
           this.check(TokenType.IDENTIFIER) ||
           this.check(TokenType.LPAREN))
       ) {
@@ -1456,7 +1703,7 @@ class Parser {
     }
 
     throw new Error(
-      `Očekáváno číslo nebo proměnná / Expected number or variable, but found '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
+      `Očekáváno číslo, řetězec nebo proměnná / Expected number, string or variable, but found '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
     );
   }
 
@@ -2567,6 +2814,10 @@ class Interpreter {
           yield* this.runCall(stmt, procedures);
           break;
 
+        case 'Print':
+          yield* this.runPrint(stmt, procedures);
+          break;
+
         case 'Return':
           yield* this.runReturn(stmt, procedures);
           return;
@@ -2577,6 +2828,114 @@ class Interpreter {
 
       if (this.hasActiveReturn()) return;
     }
+  }
+
+  formatPythonValue(val, formatSpec = '') {
+    if (!formatSpec) {
+      if (typeof val === 'number' && !Number.isInteger(val)) {
+        // Avoid float noise like 0.30000000000000004 when unformatted
+        return String(Number(val.toPrecision(12)));
+      }
+      return String(val);
+    }
+
+    // Parse Python format spec: [[fill]align][sign][0][width][.precision][type]
+    const match = formatSpec.match(/^(.?[<>=^])?([+\- ])?(0)?(\d+)?(?:\.(\d+))?([fFeEgGdoxXb%s])?$/);
+    if (!match) {
+      return String(val);
+    }
+    const [, alignPart, signPart, zeroPad, widthStr, precStr, typeChar] = match;
+    const num = Number(val);
+    let result = String(val);
+
+    if (!Number.isNaN(num) && typeChar !== 's') {
+      const prec = precStr !== undefined ? parseInt(precStr, 10) : undefined;
+      switch (typeChar) {
+        case 'f':
+        case 'F':
+          result = num.toFixed(prec !== undefined ? prec : 6);
+          break;
+        case 'e':
+          result = num.toExponential(prec !== undefined ? prec : 6);
+          break;
+        case 'E':
+          result = num.toExponential(prec !== undefined ? prec : 6).toUpperCase();
+          break;
+        case 'd':
+          result = Math.trunc(num).toString(10);
+          break;
+        case 'x':
+          result = Math.trunc(num).toString(16);
+          break;
+        case 'X':
+          result = Math.trunc(num).toString(16).toUpperCase();
+          break;
+        case 'b':
+          result = Math.trunc(num).toString(2);
+          break;
+        case 'o':
+          result = Math.trunc(num).toString(8);
+          break;
+        case '%':
+          result = (num * 100).toFixed(prec !== undefined ? prec : 2) + '%';
+          break;
+        default:
+          if (prec !== undefined) {
+            result = num.toFixed(prec);
+          } else if (!Number.isInteger(num)) {
+            result = String(Number(num.toPrecision(12)));
+          }
+          break;
+      }
+      if (num >= 0 && signPart === '+') {
+        result = '+' + result;
+      } else if (num >= 0 && signPart === ' ') {
+        result = ' ' + result;
+      }
+    }
+
+    const width = widthStr ? parseInt(widthStr, 10) : 0;
+    if (width > result.length) {
+      let fill = zeroPad ? '0' : ' ';
+      let align = !Number.isNaN(num) ? '>' : '<';
+      if (alignPart) {
+        if (alignPart.length === 2) {
+          fill = alignPart[0];
+          align = alignPart[1];
+        } else {
+          align = alignPart[0];
+        }
+      }
+      const padLen = width - result.length;
+      if (align === '<') {
+        result = result + fill.repeat(padLen);
+      } else if (align === '^') {
+        const leftPad = Math.floor(padLen / 2);
+        const rightPad = padLen - leftPad;
+        result = fill.repeat(leftPad) + result + fill.repeat(rightPad);
+      } else {
+        result = fill.repeat(padLen) + result;
+      }
+    }
+
+    return result;
+  }
+
+  *runPrint(stmt, procedures) {
+    const activeProcedures = procedures || this.program?.procedures;
+    const pieces = [];
+    for (const argExpr of stmt.args || []) {
+      const val = yield* this.evalExpr(argExpr, activeProcedures);
+      pieces.push(this.formatPythonValue(val));
+    }
+    const message = pieces.join(' ');
+    this.emit('log', message, stmt.loc);
+    yield {
+      type: 'PRINT',
+      message,
+      loc: stmt.loc,
+    };
+    return message;
   }
 
   *runReturn(stmt, procedures) {
@@ -2604,7 +2963,7 @@ class Interpreter {
     };
 
     switch (norm) {
-      // Karel position getters
+      // Karel position & state getters
       case 'KDEX':
       case 'WHEREX':
       case 'GETX':
@@ -2622,6 +2981,20 @@ class Interpreter {
       case 'POZICEY':
       case 'SOURADNICEY':
         return this.world.karel.y;
+
+      case 'KDESMER':
+      case 'SMER':
+      case 'WHEREDIR':
+      case 'GETDIR':
+      case 'KARELDIR':
+        return this.world.karel.dir;
+
+      case 'KDEZNACKY':
+      case 'POCETZNACEK':
+      case 'WHEREBEEPERS':
+      case 'GETBEEPERS':
+      case 'BEEPERSHERE':
+        return this.world.getBeepers(this.world.karel.x, this.world.karel.y);
 
       // Constants as 0-arg functions
       case 'PI':
@@ -2650,6 +3023,8 @@ class Interpreter {
         return Math.acos(args[0]);
       case 'ATAN':
       case 'ARCTAN':
+        requireArgs(1);
+        return Math.atan(args[0]);
       case 'ATG':
         requireArgs(1);
         return Math.atan(args[0]);
@@ -2687,6 +3062,10 @@ class Interpreter {
       case 'ROUND':
       case 'ZAOKROUHLI':
         requireArgs(1);
+        if (args.length >= 2) {
+          const factor = Math.pow(10, args[1]);
+          return Math.round(args[0] * factor) / factor;
+        }
         return Math.round(args[0]);
       case 'FLOOR':
       case 'PODLAHA':
@@ -2762,6 +3141,16 @@ class Interpreter {
         if (args.length === 1) return Math.floor(Math.random() * args[0]);
         return Math.floor(args[0] + Math.random() * (args[1] - args[0] + 1));
 
+      case 'STR':
+      case 'TEXT':
+        requireArgs(1);
+        return this.formatPythonValue(args[0]);
+
+      case 'LEN':
+      case 'DELKA':
+        requireArgs(1);
+        return String(args[0]).length;
+
       default:
         throw new Error(
           `Neznámá funkce '${norm}' / Unknown function '${norm}'${lineInfo}`
@@ -2771,11 +3160,28 @@ class Interpreter {
 
   *evalExpr(node, procedures) {
     if (!node) return 0;
-    if (typeof node === 'number') return node;
+    if (typeof node === 'number' || typeof node === 'string') return node;
 
     switch (node.type) {
       case 'NumberLiteral':
         return node.value;
+
+      case 'StringLiteral': {
+        const activeProcedures = procedures || this.program?.procedures;
+        if (!node.parts || node.parts.length === 0) {
+          return node.text || '';
+        }
+        let out = '';
+        for (const part of node.parts) {
+          if (part.type === 'text') {
+            out += part.value;
+          } else if (part.type === 'expr') {
+            const val = yield* this.evalExpr(part.expr, activeProcedures);
+            out += this.formatPythonValue(val, part.formatSpec);
+          }
+        }
+        return out;
+      }
 
       case 'Variable': {
         const key = canonicalize(node.name);
@@ -2813,6 +3219,24 @@ class Interpreter {
         ) {
           return this.world.karel.y;
         }
+        if (
+          key === 'KDESMER' ||
+          key === 'SMER' ||
+          key === 'WHEREDIR' ||
+          key === 'GETDIR' ||
+          key === 'KARELDIR'
+        ) {
+          return this.world.karel.dir;
+        }
+        if (
+          key === 'KDEZNACKY' ||
+          key === 'POCETZNACEK' ||
+          key === 'WHEREBEEPERS' ||
+          key === 'GETBEEPERS' ||
+          key === 'BEEPERSHERE'
+        ) {
+          return this.world.getBeepers(this.world.karel.x, this.world.karel.y);
+        }
         if (key === 'PI') return Math.PI;
         if (key === 'E') return Math.E;
 
@@ -2836,6 +3260,16 @@ class Interpreter {
             activeProcedures
           );
         }
+        if (
+          norm === 'NAPIS' ||
+          norm === 'VYPIS' ||
+          norm === 'TISKNI' ||
+          norm === 'PRINT' ||
+          norm === 'CONSOLELOG' ||
+          norm === 'ECHO'
+        ) {
+          return yield* this.runPrint({ args: node.args || [], loc: node.loc }, activeProcedures);
+        }
         const evalArgs = [];
         for (const argExpr of node.args || []) {
           evalArgs.push(yield* this.evalExpr(argExpr, activeProcedures));
@@ -2847,9 +3281,20 @@ class Interpreter {
         const left = yield* this.evalExpr(node.left, procedures);
         const right = yield* this.evalExpr(node.right, procedures);
         switch (node.op) {
-          case '+': return left + right;
+          case '+':
+            if (typeof left === 'string' || typeof right === 'string') {
+              return this.formatPythonValue(left) + this.formatPythonValue(right);
+            }
+            return left + right;
           case '-': return left - right;
-          case '*': return left * right;
+          case '*':
+            if (typeof left === 'string' && typeof right === 'number') {
+              return left.repeat(Math.max(0, Math.floor(right)));
+            }
+            if (typeof right === 'string' && typeof left === 'number') {
+              return right.repeat(Math.max(0, Math.floor(left)));
+            }
+            return left * right;
           case '/':
             if (right === 0) throw new Error(`Dělení nulou / Division by zero (řádek ${node.loc.line})`);
             return left / right;
@@ -3946,6 +4391,9 @@ class KarelApp {
 
       consoleOutput: document.getElementById('console-output'),
       clearConsoleBtn: document.getElementById('clear-console-btn'),
+      filterAllBtn: document.getElementById('filter-all-btn'),
+      filterPrintBtn: document.getElementById('filter-print-btn'),
+      debugVars: document.getElementById('debug-vars'),
 
       // Left pane tabs and views
       tabEditor: document.getElementById('tab-editor'),
@@ -3994,7 +4442,10 @@ class KarelApp {
         resizeBtn: 'OK',
         mazeBtn: '🎲 Bludiště',
         clearBtn: 'Vyčistit',
-        consoleTitle: 'Konzole & Hlášení:',
+        consoleTitle: 'Debug Konzole:',
+        filterAll: 'Vše',
+        filterPrint: 'Výpisy (NAPIS/PRINT)',
+        clearConsole: 'Smazat',
         statusIdle: 'PŘIPRAVEN',
         statusRunning: 'BĚŽÍ',
         statusPaused: 'POZASTAVEN',
@@ -4026,6 +4477,8 @@ class KarelApp {
         guideSensorsTitle: '7. Dostupné podmínky a senzory',
         guideVarTitle: '8. Proměnné, kdeX/kdeY a matematické funkce',
         guideVarP1: 'Používejte proměnné s LET, pozici Karla kdeX / kdeY (EN: whereX / whereY) a vestavěné matematické funkce: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
+        guidePrintTitle: '9. Debug konzole a výpis (NAPIS / PRINT + Python f"...")',
+        guidePrintP1: 'Pro ladění programu použijte příkaz NAPIS (nebo VYPIS / PRINT). Podporuje Python f-string interpolaci f"Pozice: [{kdeX}, {kdeY}], sin={sin(PI/4):.2f}, {idx=}":',
       },
       en: {
         cheatsheet: 'Cheatsheet',
@@ -4044,7 +4497,10 @@ class KarelApp {
         resizeBtn: 'OK',
         mazeBtn: '🎲 Maze',
         clearBtn: 'Clear',
-        consoleTitle: 'Console & Logs:',
+        consoleTitle: 'Debug Console:',
+        filterAll: 'All',
+        filterPrint: 'Prints (PRINT/NAPIS)',
+        clearConsole: 'Clear',
         statusIdle: 'READY',
         statusRunning: 'RUNNING',
         statusPaused: 'PAUSED',
@@ -4076,6 +4532,8 @@ class KarelApp {
         guideSensorsTitle: '7. Available Conditions & Sensors',
         guideVarTitle: '8. Variables, whereX/whereY & Math Functions',
         guideVarP1: 'Use variables with LET, Karel coordinates whereX / whereY (CS: kdeX / kdeY), and built-in math functions: sin, cos, tan, sind, cosd, round, floor, ceil, abs, sqrt, pow(a, b), min(a, b), max(a, b), hypot(dx, dy), PI:',
+        guidePrintTitle: '9. Debug Console & Printing (PRINT / NAPIS + Python f"...")',
+        guidePrintP1: 'Use PRINT (or NAPIS) to output debug messages to the console. Supports Python f-string interpolation f"Pos: [{whereX}, {whereY}], sin={sin(PI/4):.2f}, {idx=}":',
       },
     };
   }
@@ -4128,6 +4586,11 @@ class KarelApp {
           ? 'LET idx = 0\n'
           : 'LET idx = 0\n';
         break;
+      case 'print':
+        snippet = isCs
+          ? 'NAPIS f"Karel je na [{kdeX}, {kdeY}]"\n'
+          : 'PRINT f"Karel is at [{whereX}, {whereY}]"\n';
+        break;
     }
 
     this.switchTab('editor');
@@ -4169,6 +4632,11 @@ class KarelApp {
         sample = isCs
           ? '// Kladení značek na každé sudé políčko:\nLET idx 0\n\nDOKUD NENI ZED\n  KDYZ idx % 2 == 0\n    POLOZ\n  KONEC\n  KROK\n  LET idx idx + 1\nKONEC\n\nKDYZ idx % 2 == 0\n  POLOZ\nKONEC\n'
           : '// Placing beepers on alternating tiles:\nLET idx 0\n\nWHILE FRONT_IS_CLEAR\n  IF idx % 2 == 0\n    PUT\n  END\n  STEP\n  LET idx idx + 1\nEND\n\nIF idx % 2 == 0\n  PUT\nEND\n';
+        break;
+      case 'print':
+        sample = isCs
+          ? 'LET krokCislo = 0\nOPAKUJ 4 KRAT\n  KROK\n  LET krokCislo = krokCislo + 1\n  NAPIS f"Krok {krokCislo}: Karel je na [{kdeX}, {kdeY}], vzdálenost={hypot(kdeX, kdeY):.2f}"\nKONEC\n'
+          : 'LET stepNum = 0\nREPEAT 4 TIMES\n  STEP\n  LET stepNum = stepNum + 1\n  PRINT f"Step {stepNum}: Karel is at [{whereX}, {whereY}], dist={hypot(whereX, whereY):.2f}"\nEND\n';
         break;
     }
 
@@ -4215,14 +4683,16 @@ class KarelApp {
         const labels = {
           step: '+ KROK', left: '+ VLEVO', right: '+ VPRAVO',
           put: '+ POLOŽ', pick: '+ ZVEDNI', repeat: '+ OPAKUJ',
-          while: '+ DOKUD', if: '+ KDYŽ', proc: '+ PŘÍKAZ'
+          while: '+ DOKUD', if: '+ KDYŽ', proc: '+ PŘÍKAZ',
+          let: '+ LET', print: '+ NAPIŠ'
         };
         if (labels[ins]) btn.textContent = labels[ins];
       } else {
         const labels = {
           step: '+ STEP', left: '+ LEFT', right: '+ RIGHT',
           put: '+ PUT', pick: '+ PICK', repeat: '+ REPEAT',
-          while: '+ WHILE', if: '+ IF', proc: '+ DEFINE'
+          while: '+ WHILE', if: '+ IF', proc: '+ DEFINE',
+          let: '+ LET', print: '+ PRINT'
         };
         if (labels[ins]) btn.textContent = labels[ins];
       }
@@ -4445,10 +4915,22 @@ class KarelApp {
       this.log('Vygenerováno náhodné bludiště / Generated random maze', 'info');
     });
 
-    // Clear console
+    // Clear console & Console filter buttons
     this.dom.clearConsoleBtn.addEventListener('click', () => {
       this.dom.consoleOutput.innerHTML = '';
     });
+    if (this.dom.filterAllBtn && this.dom.filterPrintBtn) {
+      this.dom.filterAllBtn.addEventListener('click', () => {
+        this.dom.filterAllBtn.classList.add('active');
+        this.dom.filterPrintBtn.classList.remove('active');
+        this.dom.consoleOutput.classList.remove('filter-print-only');
+      });
+      this.dom.filterPrintBtn.addEventListener('click', () => {
+        this.dom.filterPrintBtn.classList.add('active');
+        this.dom.filterAllBtn.classList.remove('active');
+        this.dom.consoleOutput.classList.add('filter-print-only');
+      });
+    }
 
     // Canvas click interaction for world editing
     this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
@@ -4461,6 +4943,8 @@ class KarelApp {
     this.interpreter.on('stateChange', (state) => this.handleStateChange(state));
     this.interpreter.on('highlightLine', (line) => this.highlightLine(line));
     this.interpreter.on('action', (action, karel) => this.handleInterpreterAction(action, karel));
+    this.interpreter.on('log', (msg, loc) => this.logPrint(msg, loc));
+    this.interpreter.on('variableChange', () => this.updateDebugVars());
     this.interpreter.on('error', (err) => this.handleInterpreterError(err));
     this.interpreter.on('finish', (stats) => this.handleInterpreterFinish(stats));
   }
@@ -4856,6 +5340,57 @@ class KarelApp {
 
     this.dom.hudBag.textContent = k.bag === Infinity ? '∞' : String(k.bag);
     this.dom.hudCellBeepers.textContent = String(this.world.getBeepers(k.x, k.y));
+    this.updateDebugVars();
+  }
+
+  updateDebugVars() {
+    if (!this.dom.debugVars) return;
+    this.dom.debugVars.innerHTML = '';
+    const entries = [];
+    for (const [k, v] of this.interpreter.variables.entries()) {
+      entries.push([k, v]);
+    }
+    if (this.interpreter.callStack && this.interpreter.callStack.length > 0) {
+      const top = this.interpreter.callStack[this.interpreter.callStack.length - 1];
+      for (const [k, v] of top.locals.entries()) {
+        entries.push([`${top.name}.${k}`, v]);
+      }
+    }
+    for (const [name, val] of entries) {
+      const badge = document.createElement('span');
+      badge.className = 'debug-var-badge';
+      const formatted =
+        typeof val === 'number' && !Number.isInteger(val)
+          ? Number(val.toPrecision(6))
+          : val;
+      badge.textContent = `${name}=${formatted}`;
+      this.dom.debugVars.appendChild(badge);
+    }
+  }
+
+  logPrint(message, loc) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry log-print';
+
+    const time = new Date().toLocaleTimeString();
+    if (loc && loc.line) {
+      const lineTag = document.createElement('span');
+      lineTag.className = 'log-line-tag';
+      lineTag.textContent = `[${time} | ř.${loc.line}]`;
+      entry.appendChild(lineTag);
+    } else {
+      const lineTag = document.createElement('span');
+      lineTag.className = 'log-line-tag';
+      lineTag.textContent = `[${time}]`;
+      entry.appendChild(lineTag);
+    }
+
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = `🖨️ ${message}`;
+    entry.appendChild(msgSpan);
+
+    this.dom.consoleOutput.appendChild(entry);
+    this.dom.consoleOutput.scrollTop = this.dom.consoleOutput.scrollHeight;
   }
 
   log(message, type = 'info') {

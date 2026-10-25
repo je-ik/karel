@@ -139,6 +139,10 @@ export class Interpreter {
           yield* this.runCall(stmt, procedures);
           break;
 
+        case 'Print':
+          yield* this.runPrint(stmt, procedures);
+          break;
+
         case 'Return':
           yield* this.runReturn(stmt, procedures);
           return;
@@ -149,6 +153,114 @@ export class Interpreter {
 
       if (this.hasActiveReturn()) return;
     }
+  }
+
+  formatPythonValue(val, formatSpec = '') {
+    if (!formatSpec) {
+      if (typeof val === 'number' && !Number.isInteger(val)) {
+        // Avoid float noise like 0.30000000000000004 when unformatted
+        return String(Number(val.toPrecision(12)));
+      }
+      return String(val);
+    }
+
+    // Parse Python format spec: [[fill]align][sign][0][width][.precision][type]
+    const match = formatSpec.match(/^(.?[<>=^])?([+\- ])?(0)?(\d+)?(?:\.(\d+))?([fFeEgGdoxXb%s])?$/);
+    if (!match) {
+      return String(val);
+    }
+    const [, alignPart, signPart, zeroPad, widthStr, precStr, typeChar] = match;
+    const num = Number(val);
+    let result = String(val);
+
+    if (!Number.isNaN(num) && typeChar !== 's') {
+      const prec = precStr !== undefined ? parseInt(precStr, 10) : undefined;
+      switch (typeChar) {
+        case 'f':
+        case 'F':
+          result = num.toFixed(prec !== undefined ? prec : 6);
+          break;
+        case 'e':
+          result = num.toExponential(prec !== undefined ? prec : 6);
+          break;
+        case 'E':
+          result = num.toExponential(prec !== undefined ? prec : 6).toUpperCase();
+          break;
+        case 'd':
+          result = Math.trunc(num).toString(10);
+          break;
+        case 'x':
+          result = Math.trunc(num).toString(16);
+          break;
+        case 'X':
+          result = Math.trunc(num).toString(16).toUpperCase();
+          break;
+        case 'b':
+          result = Math.trunc(num).toString(2);
+          break;
+        case 'o':
+          result = Math.trunc(num).toString(8);
+          break;
+        case '%':
+          result = (num * 100).toFixed(prec !== undefined ? prec : 2) + '%';
+          break;
+        default:
+          if (prec !== undefined) {
+            result = num.toFixed(prec);
+          } else if (!Number.isInteger(num)) {
+            result = String(Number(num.toPrecision(12)));
+          }
+          break;
+      }
+      if (num >= 0 && signPart === '+') {
+        result = '+' + result;
+      } else if (num >= 0 && signPart === ' ') {
+        result = ' ' + result;
+      }
+    }
+
+    const width = widthStr ? parseInt(widthStr, 10) : 0;
+    if (width > result.length) {
+      let fill = zeroPad ? '0' : ' ';
+      let align = !Number.isNaN(num) ? '>' : '<';
+      if (alignPart) {
+        if (alignPart.length === 2) {
+          fill = alignPart[0];
+          align = alignPart[1];
+        } else {
+          align = alignPart[0];
+        }
+      }
+      const padLen = width - result.length;
+      if (align === '<') {
+        result = result + fill.repeat(padLen);
+      } else if (align === '^') {
+        const leftPad = Math.floor(padLen / 2);
+        const rightPad = padLen - leftPad;
+        result = fill.repeat(leftPad) + result + fill.repeat(rightPad);
+      } else {
+        result = fill.repeat(padLen) + result;
+      }
+    }
+
+    return result;
+  }
+
+  *runPrint(stmt, procedures) {
+    const activeProcedures = procedures || this.program?.procedures;
+    const pieces = [];
+    for (const argExpr of stmt.args || []) {
+      const val = yield* this.evalExpr(argExpr, activeProcedures);
+      pieces.push(this.formatPythonValue(val));
+    }
+    const message = pieces.join(' ');
+    this.emit('log', message, stmt.loc);
+    yield {
+      type: 'PRINT',
+      message,
+      loc: stmt.loc,
+    };
+    return message;
   }
 
   *runReturn(stmt, procedures) {
@@ -176,7 +288,7 @@ export class Interpreter {
     };
 
     switch (norm) {
-      // Karel position getters
+      // Karel position & state getters
       case 'KDEX':
       case 'WHEREX':
       case 'GETX':
@@ -194,6 +306,20 @@ export class Interpreter {
       case 'POZICEY':
       case 'SOURADNICEY':
         return this.world.karel.y;
+
+      case 'KDESMER':
+      case 'SMER':
+      case 'WHEREDIR':
+      case 'GETDIR':
+      case 'KARELDIR':
+        return this.world.karel.dir;
+
+      case 'KDEZNACKY':
+      case 'POCETZNACEK':
+      case 'WHEREBEEPERS':
+      case 'GETBEEPERS':
+      case 'BEEPERSHERE':
+        return this.world.getBeepers(this.world.karel.x, this.world.karel.y);
 
       // Constants as 0-arg functions
       case 'PI':
@@ -222,6 +348,8 @@ export class Interpreter {
         return Math.acos(args[0]);
       case 'ATAN':
       case 'ARCTAN':
+        requireArgs(1);
+        return Math.atan(args[0]);
       case 'ATG':
         requireArgs(1);
         return Math.atan(args[0]);
@@ -259,6 +387,10 @@ export class Interpreter {
       case 'ROUND':
       case 'ZAOKROUHLI':
         requireArgs(1);
+        if (args.length >= 2) {
+          const factor = Math.pow(10, args[1]);
+          return Math.round(args[0] * factor) / factor;
+        }
         return Math.round(args[0]);
       case 'FLOOR':
       case 'PODLAHA':
@@ -334,6 +466,16 @@ export class Interpreter {
         if (args.length === 1) return Math.floor(Math.random() * args[0]);
         return Math.floor(args[0] + Math.random() * (args[1] - args[0] + 1));
 
+      case 'STR':
+      case 'TEXT':
+        requireArgs(1);
+        return this.formatPythonValue(args[0]);
+
+      case 'LEN':
+      case 'DELKA':
+        requireArgs(1);
+        return String(args[0]).length;
+
       default:
         throw new Error(
           `Neznámá funkce '${norm}' / Unknown function '${norm}'${lineInfo}`
@@ -343,11 +485,28 @@ export class Interpreter {
 
   *evalExpr(node, procedures) {
     if (!node) return 0;
-    if (typeof node === 'number') return node;
+    if (typeof node === 'number' || typeof node === 'string') return node;
 
     switch (node.type) {
       case 'NumberLiteral':
         return node.value;
+
+      case 'StringLiteral': {
+        const activeProcedures = procedures || this.program?.procedures;
+        if (!node.parts || node.parts.length === 0) {
+          return node.text || '';
+        }
+        let out = '';
+        for (const part of node.parts) {
+          if (part.type === 'text') {
+            out += part.value;
+          } else if (part.type === 'expr') {
+            const val = yield* this.evalExpr(part.expr, activeProcedures);
+            out += this.formatPythonValue(val, part.formatSpec);
+          }
+        }
+        return out;
+      }
 
       case 'Variable': {
         const key = canonicalize(node.name);
@@ -385,6 +544,24 @@ export class Interpreter {
         ) {
           return this.world.karel.y;
         }
+        if (
+          key === 'KDESMER' ||
+          key === 'SMER' ||
+          key === 'WHEREDIR' ||
+          key === 'GETDIR' ||
+          key === 'KARELDIR'
+        ) {
+          return this.world.karel.dir;
+        }
+        if (
+          key === 'KDEZNACKY' ||
+          key === 'POCETZNACEK' ||
+          key === 'WHEREBEEPERS' ||
+          key === 'GETBEEPERS' ||
+          key === 'BEEPERSHERE'
+        ) {
+          return this.world.getBeepers(this.world.karel.x, this.world.karel.y);
+        }
         if (key === 'PI') return Math.PI;
         if (key === 'E') return Math.E;
 
@@ -408,6 +585,16 @@ export class Interpreter {
             activeProcedures
           );
         }
+        if (
+          norm === 'NAPIS' ||
+          norm === 'VYPIS' ||
+          norm === 'TISKNI' ||
+          norm === 'PRINT' ||
+          norm === 'CONSOLELOG' ||
+          norm === 'ECHO'
+        ) {
+          return yield* this.runPrint({ args: node.args || [], loc: node.loc }, activeProcedures);
+        }
         const evalArgs = [];
         for (const argExpr of node.args || []) {
           evalArgs.push(yield* this.evalExpr(argExpr, activeProcedures));
@@ -419,9 +606,20 @@ export class Interpreter {
         const left = yield* this.evalExpr(node.left, procedures);
         const right = yield* this.evalExpr(node.right, procedures);
         switch (node.op) {
-          case '+': return left + right;
+          case '+':
+            if (typeof left === 'string' || typeof right === 'string') {
+              return this.formatPythonValue(left) + this.formatPythonValue(right);
+            }
+            return left + right;
           case '-': return left - right;
-          case '*': return left * right;
+          case '*':
+            if (typeof left === 'string' && typeof right === 'number') {
+              return left.repeat(Math.max(0, Math.floor(right)));
+            }
+            if (typeof right === 'string' && typeof left === 'number') {
+              return right.repeat(Math.max(0, Math.floor(left)));
+            }
+            return left * right;
           case '/':
             if (right === 0) throw new Error(`Dělení nulou / Division by zero (řádek ${node.loc.line})`);
             return left / right;

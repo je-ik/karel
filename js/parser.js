@@ -3,13 +3,14 @@
  * Recursive descent parser generating an AST.
  */
 
-import { TokenType, canonicalize } from './lexer.js';
+import { Lexer, TokenType, canonicalize } from './lexer.js';
 import {
   ProgramNode,
   ProcedureDefNode,
   CallNode,
   ReturnNode,
   FuncCallNode,
+  PrintNode,
   CommandNode,
   RepeatNode,
   WhileNode,
@@ -19,6 +20,7 @@ import {
   BinaryOpNode,
   UnaryOpNode,
   NumberLiteralNode,
+  StringLiteralNode,
   VariableNode,
   ExprConditionNode
 } from './ast.js';
@@ -254,6 +256,12 @@ export class Parser {
         expr = new NumberLiteralNode(0, loc);
       }
       return new ReturnNode(expr, loc);
+    }
+
+    // Print / debug output statement: NAPIS / VYPIS / PRINT <args...>
+    if (this.match(TokenType.KW_PRINT)) {
+      const args = this.parseCallArgs(loc.line);
+      return new PrintNode(args, loc);
     }
 
     // Variable assignment: LET <name> [=] <expr>
@@ -510,12 +518,161 @@ export class Parser {
     return this.parsePrimary();
   }
 
+  /**
+   * Parse Python-style f-string interpolation `{expr}` or `{expr:.2f}` or `{expr=}` inside string literals.
+   * Supports escaped braces `{{` and `}}`.
+   */
+  parseInterpolatedString(strVal, loc) {
+    const text = typeof strVal === 'object' ? strVal.text : String(strVal);
+    const isFString = typeof strVal === 'object' ? Boolean(strVal.isFString) : false;
+    const parts = [];
+    let curText = '';
+    let i = 0;
+
+    while (i < text.length) {
+      const ch = text[i];
+
+      if (ch === '{') {
+        if (text[i + 1] === '{') {
+          curText += '{';
+          i += 2;
+          continue;
+        }
+        // Find matching closing '}'
+        let depth = 1;
+        let j = i + 1;
+        let inQuote = null;
+        while (j < text.length && depth > 0) {
+          const c = text[j];
+          if (inQuote) {
+            if (c === '\\') {
+              j += 2;
+              continue;
+            }
+            if (c === inQuote) inQuote = null;
+          } else {
+            if (c === '"' || c === "'") inQuote = c;
+            else if (c === '{') depth++;
+            else if (c === '}') depth--;
+          }
+          if (depth > 0) j++;
+        }
+
+        if (depth !== 0) {
+          if (isFString) {
+            throw new Error(
+              `Neukončená složená závorka '{' v f-stringu / Unclosed '{' in f-string (řádek ${loc.line})`
+            );
+          }
+          curText += ch;
+          i++;
+          continue;
+        }
+
+        const rawInside = text.slice(i + 1, j);
+        const trimmedInside = rawInside.trim();
+        if (!trimmedInside) {
+          if (isFString) {
+            throw new Error(
+              `Prázdný výraz '{}' v f-stringu / Empty expression '{}' in f-string (řádek ${loc.line})`
+            );
+          }
+          curText += '{}';
+          i = j + 1;
+          continue;
+        }
+
+        // Check for Python format specifier `:...` at top-level
+        let exprSource = rawInside;
+        let formatSpec = '';
+        let parenDepth = 0;
+        for (let k = 0; k < rawInside.length; k++) {
+          const kc = rawInside[k];
+          if (kc === '(') parenDepth++;
+          else if (kc === ')') parenDepth--;
+          else if (kc === ':' && parenDepth === 0) {
+            exprSource = rawInside.slice(0, k);
+            formatSpec = rawInside.slice(k + 1).trim();
+            break;
+          }
+        }
+
+        // Check for Python 3.8+ debug self-documenting expression `f"{x=}"`
+        let debugPrefix = '';
+        const trimmedExpr = exprSource.trim();
+        if (
+          trimmedExpr.endsWith('=') &&
+          !trimmedExpr.endsWith('==') &&
+          !trimmedExpr.endsWith('!=') &&
+          !trimmedExpr.endsWith('<=') &&
+          !trimmedExpr.endsWith('>=')
+        ) {
+          debugPrefix = exprSource; // e.g. "x=" or "kdeX + 1 = "
+          exprSource = trimmedExpr.slice(0, -1).trim();
+        }
+
+        try {
+          const subLexer = new Lexer(exprSource);
+          const subTokens = subLexer.tokenize();
+          // Fix line numbers on subTokens for accurate error messages
+          for (const st of subTokens) {
+            st.line = loc.line;
+          }
+          const subParser = new Parser(subTokens);
+          const exprAst = subParser.parseExpression();
+
+          if (curText || debugPrefix) {
+            parts.push({ type: 'text', value: curText + debugPrefix });
+            curText = '';
+          }
+          parts.push({
+            type: 'expr',
+            expr: exprAst,
+            formatSpec,
+            rawExpr: exprSource.trim(),
+          });
+          i = j + 1;
+          continue;
+        } catch (err) {
+          if (isFString) {
+            throw new Error(
+              `Chyba ve výrazu '{${rawInside}}' v f-stringu na řádku ${loc.line}: ${err.message}`
+            );
+          }
+          // If it's a normal string and `{...}` isn't a valid expression, treat literally
+          curText += `{${rawInside}}`;
+          i = j + 1;
+          continue;
+        }
+      }
+
+      if (ch === '}' && text[i + 1] === '}') {
+        curText += '}';
+        i += 2;
+        continue;
+      }
+
+      curText += ch;
+      i++;
+    }
+
+    if (curText || parts.length === 0) {
+      parts.push({ type: 'text', value: curText });
+    }
+
+    return new StringLiteralNode(text, parts, isFString, loc);
+  }
+
   parsePrimary() {
     const token = this.peek();
     const loc = { line: token.line, col: token.col };
 
     if (this.match(TokenType.NUMBER)) {
       return new NumberLiteralNode(token.value, loc);
+    }
+
+    if (this.match(TokenType.STRING)) {
+      return this.parseInterpolatedString(token.value, loc);
     }
 
     if (this.match(TokenType.IDENTIFIER)) {
@@ -538,6 +695,7 @@ export class Parser {
         !this.isAtEnd() &&
         this.peek().line === token.line &&
         (this.check(TokenType.NUMBER) ||
+          this.check(TokenType.STRING) ||
           this.check(TokenType.IDENTIFIER) ||
           this.check(TokenType.LPAREN))
       ) {
@@ -555,7 +713,7 @@ export class Parser {
     }
 
     throw new Error(
-      `Očekáváno číslo nebo proměnná / Expected number or variable, but found '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
+      `Očekáváno číslo, řetězec nebo proměnná / Expected number, string or variable, but found '${token.raw || token.type}' na řádku ${token.line}, sloupci ${token.col}`
     );
   }
 

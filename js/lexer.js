@@ -23,6 +23,7 @@ export const TokenType = {
   KW_END: 'KW_END',
   KW_DEFINE: 'KW_DEFINE',
   KW_RETURN: 'KW_RETURN',
+  KW_PRINT: 'KW_PRINT',
   KW_IS: 'KW_IS',
   KW_NOT: 'KW_NOT',
   KW_LET: 'KW_LET',
@@ -53,6 +54,7 @@ export const TokenType = {
 
   // Literals & Identifiers
   NUMBER: 'NUMBER',
+  STRING: 'STRING',
   IDENTIFIER: 'IDENTIFIER',
 
   // Delimiters (optional in classic Karel, supported for C/Python style)
@@ -158,6 +160,13 @@ const KEYWORD_MAP = {
   'RETURN': TokenType.KW_RETURN,
   'VYSLEDEK': TokenType.KW_RETURN,
 
+  'NAPIS': TokenType.KW_PRINT,
+  'VYPIS': TokenType.KW_PRINT,
+  'TISKNI': TokenType.KW_PRINT,
+  'PRINT': TokenType.KW_PRINT,
+  'CONSOLELOG': TokenType.KW_PRINT,
+  'ECHO': TokenType.KW_PRINT,
+
   'JE': TokenType.KW_IS,
   'IS': TokenType.KW_IS,
 
@@ -237,6 +246,55 @@ export class Lexer {
     return ch;
   }
 
+  readString(quoteChar, startLine, startCol, isFString = false) {
+    let raw = isFString ? `f${quoteChar}` : quoteChar;
+    this.advance(); // consume opening quote
+    let str = '';
+
+    while (this.cursor < this.source.length) {
+      const ch = this.peek();
+      if (ch === quoteChar) {
+        raw += this.advance();
+        return new Token(
+          TokenType.STRING,
+          { text: str, isFString },
+          startLine,
+          startCol,
+          raw
+        );
+      }
+      if (ch === '\\') {
+        raw += this.advance(); // consume '\'
+        if (this.cursor >= this.source.length) break;
+        const esc = this.advance();
+        raw += esc;
+        switch (esc) {
+          case 'n': str += '\n'; break;
+          case 't': str += '\t'; break;
+          case 'r': str += '\r'; break;
+          case '\\': str += '\\'; break;
+          case '"': str += '"'; break;
+          case "'": str += "'"; break;
+          case '{': str += '{{'; break;
+          case '}': str += '}}'; break;
+          default: str += esc; break;
+        }
+        continue;
+      }
+      if (ch === '\n') {
+        throw new Error(
+          `Neukončený řetězec / Unterminated string literal at line ${startLine}, col ${startCol}`
+        );
+      }
+      raw += ch;
+      str += this.advance();
+    }
+
+    throw new Error(
+      `Neukončený řetězec / Unterminated string literal at line ${startLine}, col ${startCol}`
+    );
+  }
+
   tokenize() {
     const tokens = [];
     while (this.cursor < this.source.length) {
@@ -273,6 +331,20 @@ export class Lexer {
 
       const startLine = this.line;
       const startCol = this.col;
+
+      // Python f-string: f"..." or f'...' or F"..." or F'...'
+      if ((ch === 'f' || ch === 'F') && (this.peekNext() === '"' || this.peekNext() === "'")) {
+        this.advance(); // consume 'f' / 'F'
+        const quote = this.peek();
+        tokens.push(this.readString(quote, startLine, startCol, true));
+        continue;
+      }
+
+      // Quoted string literal: "..." or '...'
+      if (ch === '"' || ch === "'") {
+        tokens.push(this.readString(ch, startLine, startCol, false));
+        continue;
+      }
 
       // Numbers (e.g. 5, 3.14, or 10-krat)
       if (/[0-9]/.test(ch)) {

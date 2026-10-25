@@ -568,7 +568,7 @@ select:focus, input:focus {
 
 /* Console / Log drawer */
 .console-pane {
-  height: 110px;
+  height: 145px;
   background-color: #0b0e14;
   border-top: 1px solid var(--border-color);
   display: flex;
@@ -583,8 +583,64 @@ select:focus, input:focus {
   padding: 0.3rem 0.75rem;
   background-color: #111620;
   border-bottom: 1px solid var(--border-color);
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   color: var(--text-muted);
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.console-header-left,
+.console-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.console-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.console-filter-btn {
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+}
+
+.console-filter-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.console-filter-btn.active {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: var(--accent-cyan);
+  color: #67e8f9;
+  font-weight: 600;
+}
+
+.debug-vars-bar {
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  color: #a5f3fc;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 380px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.debug-var-badge {
+  background: #162032;
+  border: 1px solid #1e3a5f;
+  color: #7dd3fc;
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .console-output {
@@ -593,18 +649,35 @@ select:focus, input:focus {
   overflow-y: auto;
   font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 1.4;
+  line-height: 1.45;
   user-select: text;
 }
 
+.console-output.filter-print-only .log-entry:not(.log-print) {
+  display: none;
+}
+
 .log-entry {
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   word-break: break-word;
 }
 .log-info { color: #94a3b8; }
 .log-success { color: #34d399; }
 .log-error { color: #f87171; font-weight: 600; }
 .log-warn { color: #fbbf24; }
+.log-print {
+  color: #67e8f9;
+  background: rgba(6, 182, 212, 0.08);
+  border-left: 2px solid #06b6d4;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-weight: 500;
+}
+.log-line-tag {
+  color: #64748b;
+  font-size: 0.72rem;
+  margin-right: 4px;
+}
 
 /* Cheatsheet Modal */
 .modal-overlay {

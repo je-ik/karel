@@ -85,6 +85,7 @@
           <button type="button" class="btn btn-snippet" data-insert="if" title="Vložit podmínku KDYŽ">+ KDYŽ</button>
           <button type="button" class="btn btn-snippet" data-insert="proc" title="Vložit definici PŘÍKAZ">+ PŘÍKAZ</button>
           <button type="button" class="btn btn-snippet" data-insert="let" title="Vložit proměnnou (LET idx = 0)">+ LET</button>
+          <button type="button" class="btn btn-snippet" data-insert="print" title="Vložit výpis do Debug konzole (NAPIS f&quot;...&quot;)">+ NAPIŠ</button>
         </div>
 
         <!-- Code Editor Area -->
@@ -234,6 +235,23 @@ KDYZ idx % 2 == 0
 KONEC
           </div>
         </div>
+
+        <!-- Section 9: Debug konzole a výpis (NAPIS / PRINT) -->
+        <div class="guide-section">
+          <h3>🐞 <span data-i18n="guidePrintTitle">9. Debug konzole a výpis (NAPIS / PRINT + Python f"...")</span></h3>
+          <p data-i18n="guidePrintP1">
+            Pro ladění programu použijte příkaz <code>NAPIS</code> (nebo <code>VYPIS</code> / <code>PRINT</code>). Podporuje Python f-string interpolaci <code>f"Pozice: [{kdeX}, {kdeY}], sin={sin(PI/4):.2f}, {idx=}"</code>:
+          </p>
+          <div class="guide-code-box">
+<button class="btn btn-insert-sample" data-sample="print" data-i18n="insertSample">Vložit do editoru</button>
+LET krokCislo = 0
+OPAKUJ 4 KRAT
+  KROK
+  LET krokCislo = krokCislo + 1
+  NAPIS f"Krok {krokCislo}: Karel je na [{kdeX}, {kdeY}], vzdálenost={hypot(kdeX, kdeY):.2f}"
+KONEC
+          </div>
+        </div>
       </div>
 
       <!-- Execution Controls -->
@@ -338,14 +356,23 @@ KONEC
         <canvas id="karel-canvas"></canvas>
       </div>
 
-      <!-- Console / Log Output Drawer -->
+      <!-- Debug Console / Log Output Drawer -->
       <div class="console-pane">
         <div class="console-header">
-          <span data-i18n="consoleTitle">Konzole & Hlášení:</span>
-          <button id="clear-console-btn" class="btn" style="padding: 2px 6px; font-size: 0.75rem;">Smazat</button>
+          <div class="console-header-left">
+            <span>🐞 <strong data-i18n="consoleTitle">Debug Konzole:</strong></span>
+            <div class="console-filters">
+              <button id="filter-all-btn" type="button" class="btn console-filter-btn active" data-filter="all" data-i18n="filterAll">Vše</button>
+              <button id="filter-print-btn" type="button" class="btn console-filter-btn" data-filter="print" data-i18n="filterPrint">Výpisy (NAPIS/PRINT)</button>
+            </div>
+          </div>
+          <div class="console-header-right">
+            <span id="debug-vars" class="debug-vars-bar" title="Aktuální proměnné / Active variables"></span>
+            <button id="clear-console-btn" class="btn" style="padding: 2px 8px; font-size: 0.75rem;" data-i18n="clearConsole">Smazat</button>
+          </div>
         </div>
         <div id="console-output" class="console-output">
-          <div class="log-entry log-info">Vítejte v prostředí Robot Karel! / Welcome to Karel Web IDE.</div>
+          <div class="log-entry log-info">Vítejte v prostředí Robot Karel! Pro výpis do debug konzole použijte: NAPIS f"Pozice: [{kdeX}, {kdeY}]" / Use: PRINT f"Pos: [{whereX}, {whereY}]"</div>
         </div>
       </div>
     </section>
@@ -375,6 +402,7 @@ KONEC
               <tr><td><code>CELEM-VZAD</code></td><td><code>TURN_AROUND</code></td><td>Otočení o 180°</td></tr>
               <tr><td><code>POLOZ</code></td><td><code>PUT</code> / <code>PUT_BEEPER</code></td><td>Položit značku z kapsy</td></tr>
               <tr><td><code>ZVEDNI</code></td><td><code>PICK</code> / <code>PICK_BEEPER</code></td><td>Zvednout značku do kapsy</td></tr>
+              <tr><td><code>NAPIS f"x={kdeX}"</code></td><td><code>PRINT f"x={whereX}"</code></td><td>Výpis do Debug Konzole (Python f-string)</td></tr>
             </tbody>
           </table>
         </div>

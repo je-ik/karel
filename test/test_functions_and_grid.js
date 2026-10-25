@@ -239,4 +239,46 @@ console.log('Running tests for 20x20 grid, manual placement hitTest, procedure a
   console.log('✅ Test (f): Math functions (sin, cos, sind, cosd, round, floor, ceil, abs, sqrt, pow, min, max, hypot) passed');
 }
 
-console.log('\n🎉 All 6 feature test suites passed!');
+// Test (g): Debug Console print / napis with Python f-string interpolation
+{
+  const world = new KarelWorld(20, 20);
+  const code = `
+    FUNKCE DVOJNASOBEK(n)
+      VRAT n * 2
+    KONEC
+
+    LET idx = 3
+    KROK
+    KROK
+    VLEVO-BOK
+    KROK
+
+    NAPIS f"Pozice: [{kdeX}, {kdeY}], smer={kdeSmer}"
+    PRINT(f"Math: {idx + 2}, func={DVOJNASOBEK(idx)}, pi={PI:.2f}")
+    NAPIS f"Debug: {idx=}, hex={15:x}, pad={7:03d}"
+    VYPIS "Soucet:", idx, kdeX
+    NAPIS f"Escaped {{braces}} and {kdeX}"
+  `;
+  const lexer = new Lexer(code);
+  const tokens = lexer.tokenize();
+  const parser = new Parser(tokens);
+  const ast = parser.parse();
+
+  const interpreter = new Interpreter(world);
+  const logs = [];
+  interpreter.on('log', (msg) => logs.push(msg));
+  interpreter.loadProgram(ast);
+  while (interpreter.step()) {
+    // run to completion
+  }
+
+  assert.equal(logs.length, 5);
+  assert.equal(logs[0], 'Pozice: [3, 2], smer=NORTH');
+  assert.equal(logs[1], 'Math: 5, func=6, pi=3.14');
+  assert.equal(logs[2], 'Debug: idx=3, hex=f, pad=007');
+  assert.equal(logs[3], 'Soucet: 3 3');
+  assert.equal(logs[4], 'Escaped {braces} and 3');
+  console.log('✅ Test (g): NAPIS / PRINT with Python f-string interpolation passed');
+}
+
+console.log('\n🎉 All 7 feature test suites passed!');
